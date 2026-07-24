@@ -1,0 +1,101 @@
+/* CodeMirror theme overrides to match design tokens */
+
+.cm-editor {
+  height: 100%;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  background: var(--color-bg);
+  border: none;
+  outline: none;
+}
+
+.cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  padding: 12px 0;
+}
+
+.cm-editor .cm-content {
+  padding: 0 16px;
+  caret-color: var(--color-accent);
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-editor .cm-gutters {
+  background: var(--color-bg);
+  border-right: none;
+  color: var(--color-text-muted);
+  padding-left: 8px;
+}
+
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 12px 0 8px;
+  min-width: 28px;
+  font-size: 12px;
+}
+
+.cm-editor .cm-activeLine {
+  background: var(--color-bg-subtle);
+}
+
+.cm-editor .cm-activeLineGutter {
+  background: var(--color-bg-subtle);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: var(--color-accent-soft) !important;
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: var(--color-accent);
+}
+
+.cm-editor .cm-tooltip {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  background: var(--color-bg);
+}
+
+.cm-editor .cm-tooltip-autocomplete ul li {
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.cm-editor .cm-tooltip-autocomplete ul li[aria-selected="true"] {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+/* SQL syntax highlighting - muted, professional */
+.cm-editor .tok-keyword {
+  color: var(--color-fk);
+  font-weight: 500;
+}
+
+.cm-editor .tok-string {
+  color: var(--color-success);
+}
+
+.cm-editor .tok-number {
+  color: var(--color-subquery);
+}
+
+.cm-editor .tok-comment {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.cm-editor .tok-variableName,
+.cm-editor .tok-typeName {
+  color: var(--color-text);
+}
+
+.cm-editor .tok-operator,
+.cm-editor .tok-punctuation {
+  color: var(--color-text-secondary);
+}
