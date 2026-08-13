@@ -4,7 +4,9 @@ import { chooseSQLiteFile, saveAndConnectDatabase, testDatabaseConnection } from
 import { useAppStore } from '@/store/useAppStore';
 import type { DatabaseConnectionInput, DatabaseKind } from '@/types/database';
 
-const DEFAULT_PORTS = { mysql: 3306, postgresql: 5432 } as const;
+const DEFAULT_PORTS = { mysql: 3306, postgresql: 5432, mssql: 1433 } as const;
+
+const KIND_LABELS: Record<DatabaseKind, string> = { sqlite: 'SQLite', mysql: 'MySQL', postgresql: 'PostgreSQL', mssql: 'SQL Server' };
 
 export function DatabaseConnectionDialog({ onClose, onConnected }: { onClose: () => void; onConnected: () => void }) {
   const profiles = useAppStore(state => state.databaseProfiles);
@@ -33,7 +35,7 @@ export function DatabaseConnectionDialog({ onClose, onConnected }: { onClose: ()
     <ModalDialog title="连接本机数据库" description="桌面版只读取 Schema 元数据，不执行任意 SQL。" onClose={onClose} className="database-dialog">
       <form className="dialog-form" onSubmit={event => { event.preventDefault(); void run('connect'); }}>
         <div className="database-kind-tabs" role="tablist" aria-label="数据库类型">
-          {(['sqlite', 'mysql', 'postgresql'] as DatabaseKind[]).map(kind => <button key={kind} type="button" role="tab" aria-selected={profile.kind === kind} onClick={() => setProfile(emptyProfile(kind))}>{kind === 'postgresql' ? 'PostgreSQL' : kind === 'mysql' ? 'MySQL' : 'SQLite'}</button>)}
+          {(['sqlite', 'mysql', 'postgresql', 'mssql'] as DatabaseKind[]).map(kind => <button key={kind} type="button" role="tab" aria-selected={profile.kind === kind} onClick={() => setProfile(emptyProfile(kind))}>{KIND_LABELS[kind]}</button>)}
         </div>
         {matchingProfiles.length > 0 && <label>已保存连接<select value="" onChange={event => { const saved = profiles.find(item => item.id === event.target.value); if (saved) setProfile({ ...saved, password: '' }); }}><option value="">新建连接</option>{matchingProfiles.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>}
         <label>连接名称<input value={profile.name} onChange={event => update({ name: event.target.value })} required maxLength={80} /></label>
@@ -41,9 +43,17 @@ export function DatabaseConnectionDialog({ onClose, onConnected }: { onClose: ()
           <label>数据库文件<div className="file-picker-row"><input value={profile.filePath ?? ''} readOnly placeholder="请选择 .sqlite / .db 文件" /><button type="button" disabled={!!busy} onClick={async () => { setBusy('file'); try { update({ filePath: await chooseSQLiteFile(profile) }); } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); } finally { setBusy(null); } }}>选择文件</button></div></label>
         ) : <>
           <div className="form-grid"><label>主机<input value={profile.host ?? ''} onChange={event => update({ host: event.target.value })} required /></label><label>端口<input type="number" min={1} max={65535} value={profile.port ?? ''} onChange={event => update({ port: Number(event.target.value) })} required /></label></div>
-          <div className="form-grid"><label>数据库<input value={profile.database ?? ''} onChange={event => update({ database: event.target.value })} required /></label><label>Schema（可选）<input value={profile.schema ?? ''} onChange={event => update({ schema: event.target.value })} placeholder={profile.kind === 'postgresql' ? 'public' : ''} /></label></div>
-          <label>用户名<input value={profile.username ?? ''} onChange={event => update({ username: event.target.value })} required /></label>
-          <label>密码<input type="password" autoComplete="new-password" value={profile.password ?? ''} onChange={event => update({ password: event.target.value })} /></label>
+          <div className="form-grid"><label>数据库<input value={profile.database ?? ''} onChange={event => update({ database: event.target.value })} required /></label><label>Schema（可选）<input value={profile.schema ?? ''} onChange={event => update({ schema: event.target.value })} placeholder={profile.kind === 'postgresql' ? 'public' : profile.kind === 'mssql' ? 'dbo' : ''} /></label></div>
+          {profile.kind === 'mssql' ? (
+            <label>认证方式<select value={profile.authType ?? 'sql'} onChange={event => update({ authType: event.target.value === 'windows' ? 'windows' : 'sql' })}><option value="sql">SQL 认证（用户名 / 密码）</option><option value="windows">Windows 集成认证</option></select></label>
+          ) : null}
+          {profile.kind !== 'mssql' || profile.authType !== 'windows' ? (
+            <>
+              <label>用户名<input value={profile.username ?? ''} onChange={event => update({ username: event.target.value })} required /></label>
+              <label>密码<input type="password" autoComplete="new-password" value={profile.password ?? ''} onChange={event => update({ password: event.target.value })} /></label>
+            </>
+          ) : null}
+          {profile.kind === 'mssql' && <label className="checkbox-label"><input type="checkbox" checked={profile.encrypt !== false} onChange={event => update({ encrypt: event.target.checked })} />加密连接（跳过证书校验）</label>}
           <label className="checkbox-label"><input type="checkbox" checked={profile.rememberPassword} onChange={event => update({ rememberPassword: event.target.checked })} />使用系统安全存储记住密码</label>
         </>}
         {error && <p className="field-error" role="alert">{error}</p>}
@@ -55,8 +65,12 @@ export function DatabaseConnectionDialog({ onClose, onConnected }: { onClose: ()
 
 function emptyProfile(kind: DatabaseKind): DatabaseConnectionInput {
   return {
-    id: crypto.randomUUID(), name: kind === 'sqlite' ? '本机 SQLite' : `本机 ${kind === 'mysql' ? 'MySQL' : 'PostgreSQL'}`,
+    id: crypto.randomUUID(), name: kind === 'sqlite' ? '本机 SQLite' : `本机 ${KIND_LABELS[kind]}`,
     kind, rememberPassword: false,
-    ...(kind === 'sqlite' ? {} : { host: '127.0.0.1', port: DEFAULT_PORTS[kind], database: '', username: '', schema: kind === 'postgresql' ? 'public' : '' }),
+    ...(kind === 'sqlite' ? {} : {
+      host: '127.0.0.1', port: DEFAULT_PORTS[kind], database: '', username: '',
+      schema: kind === 'postgresql' ? 'public' : kind === 'mssql' ? 'dbo' : '',
+      ...(kind === 'mssql' ? { encrypt: true, authType: 'sql' } : {}),
+    }),
   };
 }

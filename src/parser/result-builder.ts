@@ -12,7 +12,8 @@ export function createParseResult(statements: unknown[], schemaSnapshot?: Databa
   statements.forEach((statement, index) => {
     const node = asNode(statement);
     const type = statementType(node);
-    const supportedCreate = type !== 'create' || identifier(node?.keyword).toLowerCase() === 'table';
+    const createKeyword = identifier(node?.keyword).toLowerCase();
+    const supportedCreate = type !== 'create' || createKeyword === 'table' || createKeyword === 'view';
     if (!SUPPORTED.has(type) || !supportedCreate) {
       warnings.push({
         code: 'unsupported-statement',

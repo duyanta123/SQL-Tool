@@ -1,9 +1,9 @@
 import type { Node, Edge } from '@xyflow/react';
-import type { ERGraph } from '@/types/er-diagram';
+import type { ERGraph, ERNodeData } from '@/types/er-diagram';
 import { applyDagreLayout } from './dagre-layout';
 import { ER_LAYOUT_CONFIG, ER_NODE_WIDTH, ER_HEADER_HEIGHT, ER_ROW_HEIGHT, ER_PADDING } from '@/utils/constants';
 
-function estimateHeight(data: any): number {
+function estimateHeight(data: ERNodeData): number {
   const colCount = data.columns?.length ?? 0;
   return ER_HEADER_HEIGHT + colCount * ER_ROW_HEIGHT + ER_PADDING;
 }
@@ -36,7 +36,7 @@ export function layoutERGraph(graph: ERGraph): { nodes: Node[]; edges: Edge[] } 
     ...ER_LAYOUT_CONFIG,
     getNodeSize: n => ({
       width: (n.width as number) ?? ER_NODE_WIDTH,
-      height: (n.height as number) ?? estimateHeight(n.data),
+      height: (n.height as number) ?? estimateHeight(n.data as unknown as ERNodeData),
     }),
   });
 

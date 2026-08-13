@@ -97,6 +97,48 @@ export const DFFlowEdge = memo((props: EdgeProps & { data?: DFFlowEdgeData }) =>
         </EdgeLabelRenderer>
       )}
 
+      {/* Column-level lineage popover */}
+      {isHovered && ((data?.columnMapping?.length ?? 0) > 0 || (data?.filters?.length ?? 0) > 0) && (
+        <EdgeLabelRenderer>
+          <div
+            className="df-column-mapping-popover"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, 0) translate(${labelX}px, ${labelY + 12}px)`,
+            }}
+          >
+            {data?.columnMapping && data.columnMapping.length > 0 && (
+              <>
+                <div className="df-mapping-title">列映射</div>
+                {data.columnMapping.slice(0, 8).map((mapping, index) => (
+                  <div className="df-mapping-row" key={index}>
+                    <span className="df-mapping-target">{mapping.target.column}</span>
+                    <span className="df-mapping-arrow">←</span>
+                    <span className="df-mapping-source">
+                      {mapping.source.column ? `${mapping.source.table}.${mapping.source.column}` : mapping.source.table}
+                    </span>
+                    {mapping.expression && <span className="df-mapping-expr" title={mapping.expression}>{mapping.expression}</span>}
+                  </div>
+                ))}
+                {data.columnMapping.length > 8 && <div className="df-mapping-more">还有 {data.columnMapping.length - 8} 列…</div>}
+              </>
+            )}
+            {data?.filters && data.filters.length > 0 && (
+              <>
+                <div className="df-mapping-title" style={{ marginTop: data?.columnMapping?.length ? 6 : 0 }}>过滤列</div>
+                {data.filters.slice(0, 8).map((filter, index) => (
+                  <div className="df-mapping-row" key={index}>
+                    <span className="df-mapping-arrow">▸</span>
+                    <span className="df-mapping-source">{filter.table}.{filter.column}</span>
+                  </div>
+                ))}
+                {data.filters.length > 8 && <div className="df-mapping-more">还有 {data.filters.length - 8} 列…</div>}
+              </>
+            )}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+
       {/* Invisible hover zone */}
       <path
         d={edgePath}

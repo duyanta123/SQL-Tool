@@ -9,6 +9,10 @@ import {
   type EdgeTypes,
   type Node,
   type Edge,
+  type ReactFlowInstance,
+  type OnNodeDrag,
+  type NodeMouseHandler,
+  type EdgeMouseHandler,
 } from '@xyflow/react';
 import { useAppStore } from '@/store/useAppStore';
 import { MiniMapStyled } from './MiniMapStyled';
@@ -27,36 +31,40 @@ import { DFFlowEdge, EdgeArrowDefs } from '../dataflow/DFFlowEdge';
 import { EmptyState } from '../shared/EmptyState';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
+type NodeComponentType = NonNullable<NodeTypes[string]>;
+type EdgeComponentType = NonNullable<EdgeTypes[string]>;
+
 const erNodeTypes: NodeTypes = {
-  erTable: ERTableNode as any,
+  erTable: ERTableNode as unknown as NodeComponentType,
 };
 
 const erEdgeTypes: EdgeTypes = {
-  erJoin: ERJoinEdge as any,
+  erJoin: ERJoinEdge as unknown as EdgeComponentType,
 };
 
 const dfNodeTypes: NodeTypes = {
-  dfSource: DFSourceNode as any,
-  dfTarget: DFTargetNode as any,
-  dfCte: DFCTENode as any,
-  dfCteGroup: DFCTEGroupNode as any,
-  dfSubquery: DFSubqueryNode as any,
-  dfAggregate: DFAggregateNode as any,
-  dfLiteral: DFLiteralNode as any,
+  dfSource: DFSourceNode as unknown as NodeComponentType,
+  dfTarget: DFTargetNode as unknown as NodeComponentType,
+  dfCte: DFCTENode as unknown as NodeComponentType,
+  dfCteGroup: DFCTEGroupNode as unknown as NodeComponentType,
+  dfSubquery: DFSubqueryNode as unknown as NodeComponentType,
+  dfAggregate: DFAggregateNode as unknown as NodeComponentType,
+  dfLiteral: DFLiteralNode as unknown as NodeComponentType,
 };
 
 const dfEdgeTypes: EdgeTypes = {
-  dfFlow: DFFlowEdge as any,
+  dfFlow: DFFlowEdge as unknown as EdgeComponentType,
 };
 
 interface DiagramCanvasProps {
   nodes: Node[];
   edges: Edge[];
   mode: 'er' | 'dataflow';
+  searchMatchedIds?: Set<string>;
 }
 
-export function DiagramCanvas({ nodes, edges, mode }: DiagramCanvasProps) {
-  const reactFlowRef = useRef<any>(null);
+export function DiagramCanvas({ nodes, edges, mode, searchMatchedIds }: DiagramCanvasProps) {
+  const reactFlowRef = useRef<ReactFlowInstance | null>(null);
   const setHoveredEdge = useAppStore(s => s.setHoveredEdge);
   const setSelectedEdge = useAppStore(s => s.setSelectedEdge);
   const setHoveredNode = useAppStore(s => s.setHoveredNode);
@@ -70,7 +78,7 @@ export function DiagramCanvas({ nodes, edges, mode }: DiagramCanvasProps) {
   const nodeTypes = mode === 'er' ? erNodeTypes : dfNodeTypes;
   const edgeTypes = mode === 'er' ? erEdgeTypes : dfEdgeTypes;
 
-  const handleEdgeMouseEnter = useCallback((_e: any, edge: any) => {
+  const handleEdgeMouseEnter = useCallback<EdgeMouseHandler<Edge>>((_event, edge) => {
     setHoveredEdge(edge.id);
   }, [setHoveredEdge]);
 
@@ -78,8 +86,8 @@ export function DiagramCanvas({ nodes, edges, mode }: DiagramCanvasProps) {
     setHoveredEdge(null);
   }, [setHoveredEdge]);
 
-  const handleEdgeClick = useCallback((e: any, edge: any) => {
-    e.stopPropagation();
+  const handleEdgeClick = useCallback<EdgeMouseHandler<Edge>>((event, edge) => {
+    event.stopPropagation();
     setSelectedEdge(edge.id);
   }, [setSelectedEdge]);
 
@@ -88,11 +96,11 @@ export function DiagramCanvas({ nodes, edges, mode }: DiagramCanvasProps) {
     setHoveredNode(null);
   }, [setSelectedEdge, setHoveredNode]);
 
-  const handleNodeDragStop = useCallback((_e: any, node: any) => {
+  const handleNodeDragStop = useCallback<OnNodeDrag<Node>>((_event, node) => {
     setNodePosition(node.id, node.position);
   }, [setNodePosition]);
 
-  const handleNodeMouseEnter = useCallback((_e: any, node: any) => {
+  const handleNodeMouseEnter = useCallback<NodeMouseHandler<Node>>((_event, node) => {
     setHoveredNode(node.id);
   }, [setHoveredNode]);
 
@@ -124,6 +132,11 @@ export function DiagramCanvas({ nodes, edges, mode }: DiagramCanvasProps) {
 
   void reactFlowRef;
 
+  const displayNodes = useMemo(() => {
+    if (!searchMatchedIds || searchMatchedIds.size === 0) return nodes;
+    return nodes.map(node => searchMatchedIds.has(node.id) ? { ...node, className: 'search-match' } : node);
+  }, [nodes, searchMatchedIds]);
+
   return (
     <div
       ref={containerRef}
@@ -143,12 +156,12 @@ export function DiagramCanvas({ nodes, edges, mode }: DiagramCanvasProps) {
         ) : (
           <ReactFlow
             key={mode}
-            nodes={nodes}
+            nodes={displayNodes}
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            onInit={(inst: any) => {
-              reactFlowRef.current = inst;
+            onInit={(instance: ReactFlowInstance) => {
+              reactFlowRef.current = instance;
               setTimeout(fitContent, 80);
             }}
             onEdgeMouseEnter={handleEdgeMouseEnter}

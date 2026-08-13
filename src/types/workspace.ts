@@ -22,13 +22,27 @@ export interface WorkspaceRecordV1 extends WorkspaceRecordBase {
   schemaVersion: 1;
 }
 
+/** 单个 SQL 标签页的内容（每个工作区包含一或多个标签页） */
+export interface WorkspaceTab {
+  id: string;
+  name: string;
+  sql: string;
+  dialect: Dialect;
+  viewMode: ViewMode;
+  positions: WorkspacePositions;
+  erScope: ERScope;
+  selectedTableIds: string[];
+}
+
 export interface WorkspaceRecord extends WorkspaceRecordBase {
-  schemaVersion: 2;
+  schemaVersion: 3;
   databaseProfileId?: string;
   erScope: ERScope;
   selectedTableIds: string[];
   autoSyncSchema: boolean;
   schemaSnapshot?: DatabaseSchemaSnapshot;
+  tabs: WorkspaceTab[];
+  activeTabId: string;
 }
 
 export interface WorkspaceSummary {

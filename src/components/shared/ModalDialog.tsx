@@ -25,6 +25,7 @@ export function ModalDialog({ title, description, onClose, children, className =
         if (!items.length) return;
         const first = items[0];
         const last = items[items.length - 1];
+        if (!first || !last) return;
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }

@@ -1,7 +1,9 @@
 import { memo } from 'react';
 import { MiniMap, type MiniMapProps } from '@xyflow/react';
+import { useAppStore } from '@/store/useAppStore';
 
 export const MiniMapStyled = memo((props: Partial<MiniMapProps>) => {
+  const dark = useAppStore(s => s.resolvedTheme === 'dark');
   return (
     <MiniMap
       {...props}
@@ -14,7 +16,7 @@ export const MiniMapStyled = memo((props: Partial<MiniMapProps>) => {
         ...props.style,
       }}
       nodeColor={node => {
-        const data = node.data as any;
+        const data = node.data as { kind?: string; tableType?: string };
         if (!data?.kind) return '#d4d4d4';
         switch (data.kind) {
           case 'source': return '#737373';
@@ -30,7 +32,7 @@ export const MiniMapStyled = memo((props: Partial<MiniMapProps>) => {
           default: return '#d4d4d4';
         }
       }}
-      maskColor="rgba(255,255,255,0.7)"
+      maskColor={dark ? 'rgba(18,19,23,0.75)' : 'rgba(255,255,255,0.7)'}
       pannable
       zoomable
     />

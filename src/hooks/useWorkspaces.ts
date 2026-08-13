@@ -21,6 +21,8 @@ export function useWorkspaces(): void {
   const selectedTableIds = useAppStore(state => state.selectedTableIds);
   const autoSyncSchema = useAppStore(state => state.autoSyncSchema);
   const schemaSnapshot = useAppStore(state => state.schemaSnapshot);
+  const tabs = useAppStore(state => state.tabs);
+  const activeTabId = useAppStore(state => state.activeTabId);
 
   useEffect(() => {
     let active = true;
@@ -43,7 +45,7 @@ export function useWorkspaces(): void {
       }
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [ready, currentWorkspaceId, workspaceName, sql, dialect, viewMode, nodePositions, databaseProfileId, erScope, selectedTableIds, autoSyncSchema, schemaSnapshot]);
+  }, [ready, currentWorkspaceId, workspaceName, sql, dialect, viewMode, nodePositions, databaseProfileId, erScope, selectedTableIds, autoSyncSchema, schemaSnapshot, tabs, activeTabId]);
 }
 
 async function initialize(): Promise<void> {

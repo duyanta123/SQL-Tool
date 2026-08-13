@@ -85,7 +85,9 @@ export const ERJoinEdge = memo((props: EdgeProps & { data?: ERJoinEdgeData }) =>
   }, [data, highlight, isHovered, isSelected, style]);
 
   const card = data?.cardinality;
-  const [sourceCard, targetCard] = card?.split(':') ?? [];
+  const [sourceCard = '', targetCard = ''] = card?.split(':') ?? [];
+  const pairJoinSQL = data?.conditions.map(condition => `${condition.leftTable}.${condition.leftColumn} ${condition.operator} ${condition.rightTable}.${condition.rightColumn}`).join(' AND ') ?? '';
+  const showFullCondition = !!data?.conditionSQL && data.conditionSQL !== pairJoinSQL;
 
   return (
     <>
@@ -201,6 +203,11 @@ export const ERJoinEdge = memo((props: EdgeProps & { data?: ERJoinEdgeData }) =>
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {showFullCondition && (
+                <div style={{ fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', color: 'var(--color-text-secondary)', wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: 1.6, marginBottom: 4 }}>
+                  {data.conditionSQL}
+                </div>
+              )}
               {data.conditions.length > 0 ? (
                 data.conditions.map((cond, i) => (
                   <div

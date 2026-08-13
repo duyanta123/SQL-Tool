@@ -1,20 +1,21 @@
 import type { DatabaseSchemaSnapshot, SchemaTable } from '@/types/database';
-import type { ERColumn, ERGraph, ERGraphEdge, JoinCondition } from '@/types/er-diagram';
+import type { ERColumn, ERGraph, ERGraphEdge, ERGraphNode, JoinCondition } from '@/types/er-diagram';
 
 export function buildDatabaseSchemaGraph(snapshot: DatabaseSchemaSnapshot | null, selectedTableIds: string[]): ERGraph {
   if (!snapshot) return { nodes: [], edges: [] };
   const selected = new Set(selectedTableIds);
   const tables = snapshot.tables.filter(table => selected.has(table.id));
   const tableIds = new Set(tables.map(table => table.id));
-  const nodes = tables.map(table => ({
+  const nodes: ERGraphNode[] = tables.map(table => ({
     id: nodeId(table.id),
     kind: 'table' as const,
     tableName: table.name,
     displayName: table.schema ? `${table.schema}.${table.name}` : table.name,
-    tableType: 'physical' as const,
+    tableType: table.kind === 'view' ? 'view' : 'physical',
     columns: columnsFromTable(table),
     source: 'database' as const,
     statementId: 'database-schema',
+    comment: table.comment,
   }));
   const edges: ERGraphEdge[] = [];
   for (const table of tables) {
@@ -65,6 +66,7 @@ function columnsFromTable(table: SchemaTable): ERColumn[] {
       nullable: column.nullable,
       fkRefTable: foreignKey?.referencedTableId,
       fkRefColumn: index >= 0 ? foreignKey?.referencedColumns[index] : undefined,
+      comment: column.comment,
     };
   });
 }

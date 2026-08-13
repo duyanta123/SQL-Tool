@@ -61,6 +61,7 @@ export const ERTableNode = memo(({ data, selected }: NodeProps & { data: ERNodeD
         }}
       >
         <div
+          title={data.kind === 'table' ? data.comment : undefined}
           style={{
             fontSize: 'var(--text-base)',
             fontWeight: 600,
@@ -110,6 +111,7 @@ export const ERTableNode = memo(({ data, selected }: NodeProps & { data: ERNodeD
           columns.map((col, idx) => (
             <div
               key={`${col.name}-${idx}`}
+              title={col.comment}
               style={{
                 height: 'var(--er-row-height)',
                 padding: '0 12px',
@@ -144,7 +146,7 @@ export const ERTableNode = memo(({ data, selected }: NodeProps & { data: ERNodeD
                 {col.name}
               </span>
               {col.source === 'sql-inferred' && (
-                <span className="inferred-column-badge" title="由当前 SQL 的字段引用推断，类型和约束未知">推断</span>
+                <span className="inferred-column-badge" title="由当前 SQL 的字段引用推断（类型为启发式推测，可能与真实定义不同）">推断</span>
               )}
               <span
                 style={{

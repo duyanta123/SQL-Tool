@@ -58,9 +58,7 @@ export function useDiagramLayout() {
 
 function applyManualPositions(nodes: Node[], manual: Record<string, { x: number; y: number }>): Node[] {
   return nodes.map(n => {
-    if (manual[n.id]) {
-      return { ...n, position: manual[n.id] };
-    }
-    return n;
+    const manualPosition = manual[n.id];
+    return manualPosition ? { ...n, position: manualPosition } : n;
   });
 }

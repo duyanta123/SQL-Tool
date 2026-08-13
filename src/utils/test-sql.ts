@@ -99,4 +99,4 @@ WHERE u.id = big_spenders.user_id;`,
   },
 ];
 
-export const DEFAULT_SQL = SAMPLE_QUERIES[0].sql;
+export const DEFAULT_SQL = SAMPLE_QUERIES[0]?.sql ?? '';

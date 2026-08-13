@@ -40,3 +40,11 @@ export async function getLastWorkspaceId(): Promise<string | undefined> {
 export async function setLastWorkspaceId(id: string): Promise<void> {
   await (await dbPromise).put('meta', id, 'last-workspace');
 }
+
+export async function getTheme(): Promise<string | undefined> {
+  return (await dbPromise).get('meta', 'theme');
+}
+
+export async function setTheme(theme: string): Promise<void> {
+  await (await dbPromise).put('meta', theme, 'theme');
+}

@@ -59,6 +59,35 @@
   --editor-width: 420px;
 }
 
+[data-theme='dark'] {
+  --color-bg: #17181c;
+  --color-bg-subtle: #1d1f24;
+  --color-surface: #1f2127;
+  --color-border: #33353c;
+  --color-border-strong: #45474f;
+  --color-text: #e8e8ea;
+  --color-text-secondary: #a5a8b0;
+  --color-text-muted: #6d7078;
+  --color-accent: #8b8bf0;
+  --color-accent-soft: #2a2b45;
+  --color-error: #f2555a;
+  --color-success: #3dbb7f;
+  --color-warning: #f5b544;
+
+  --color-pk: #f5b544;
+  --color-fk: #8b8bf0;
+  --color-cte: #a78bfa;
+  --color-subquery: #fb923c;
+  --color-aggregate: #f472b6;
+  --color-write: #3dbb7f;
+  --color-read: #9aa0ab;
+  --color-join: #8b8bf0;
+  --color-pipe: #a78bfa;
+  --color-correlate: #fb923c;
+  --color-grid: #26282e;
+  --color-node-header: #22242a;
+}
+
 *,
 *::before,
 *::after {

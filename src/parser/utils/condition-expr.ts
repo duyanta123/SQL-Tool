@@ -1,5 +1,6 @@
 import type { JoinCondition } from '@/types/er-diagram';
 import { identifier } from '../ast-normalizer';
+import { expressionToSQL } from './expression-sql';
 
 export interface EQPair {
   leftTable: string;
@@ -61,44 +62,13 @@ function collectEQ(node: any, pairs: EQPair[]): void {
   }
 }
 
+/**
+ * 把条件表达式（JOIN ON / WHERE / HAVING）还原为可读 SQL。
+ * 支持 AND/OR 与括号分组、IN、函数、CASE、类型转换等，别名可按需解析为表名。
+ */
 export function binaryToSQL(expr: any, resolveTable?: (alias: string) => string): string {
   if (!expr) return '';
-
-  if (typeof expr === 'string') return expr;
-
-  if (expr.type === 'binary_expr') {
-    const left = binaryToSQL(expr.left, resolveTable);
-    const right = binaryToSQL(expr.right, resolveTable);
-    const op = expr.operator;
-    if (op === 'AND') return `${left} AND ${right}`;
-    if (op === 'OR') return `${left} OR ${right}`;
-    return `${left} ${op} ${right}`;
-  }
-
-  if (isColumnRef(expr)) {
-    const tbl = extractTableName(expr);
-    const col = extractColumnName(expr);
-    const resolved = tbl && resolveTable ? resolveTable(tbl) : tbl;
-    return resolved ? `${resolved}.${col}` : col;
-  }
-
-  if (expr.type === 'single_quote_string') return `'${expr.value}'`;
-  if (expr.type === 'number') return String(expr.value);
-  if (expr.type === 'null') return 'NULL';
-  if (expr.type === 'bool') return expr.value ? 'TRUE' : 'FALSE';
-  if (expr.type === 'function') {
-    const args = expr.args?.type === 'expr_list'
-      ? expr.args.value.map((a: any) => binaryToSQL(a, resolveTable)).join(', ')
-      : expr.args ? binaryToSQL(expr.args, resolveTable) : '';
-    const name = typeof expr.name === 'object'
-      ? (expr.name.name?.[0]?.value ?? expr.name.toString())
-      : expr.name;
-    return `${name}(${args})`;
-  }
-
-  if (expr.value !== undefined) return String(expr.value);
-
-  return '';
+  return expressionToSQL(expr, 300, resolveTable) ?? '';
 }
 
 export function pairsToJoinConditions(pairs: EQPair[], resolveTable: (alias: string) => string): JoinCondition[] {

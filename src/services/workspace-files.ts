@@ -1,6 +1,6 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import { DIALECT_IDS, type Dialect } from '@/types/sql';
-import type { SharedWorkspacePayload, WorkspaceFileV1, WorkspaceFileV2, WorkspacePositions, WorkspaceRecord, WorkspaceRecordV1 } from '@/types/workspace';
+import type { SharedWorkspacePayload, WorkspaceFileV1, WorkspaceFileV2, WorkspacePositions, WorkspaceRecord, WorkspaceRecordV1, WorkspaceTab } from '@/types/workspace';
 import { downloadBlob } from '@/utils/download';
 
 export const MAX_WORKSPACE_FILE_SIZE = 10 * 1024 * 1024;
@@ -8,10 +8,25 @@ export const MAX_SHARE_HASH_LENGTH = 8000;
 
 const emptyPositions = (): WorkspacePositions => ({ er: {}, dataflow: {} });
 
+export function makeTab(partial?: Partial<WorkspaceTab>): WorkspaceTab {
+  return {
+    id: crypto.randomUUID(),
+    name: '查询 1',
+    sql: '',
+    dialect: 'mysql',
+    viewMode: 'er',
+    positions: emptyPositions(),
+    erScope: 'current-sql',
+    selectedTableIds: [],
+    ...partial,
+  };
+}
+
 export function createWorkspaceRecord(name: string, sql = '', dialect: Dialect = 'mysql'): WorkspaceRecord {
   const now = Date.now();
+  const tab = makeTab({ name: '查询 1', sql, dialect });
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: crypto.randomUUID(),
     name: normalizeName(name),
     sql,
@@ -21,6 +36,8 @@ export function createWorkspaceRecord(name: string, sql = '', dialect: Dialect =
     erScope: 'current-sql',
     selectedTableIds: [],
     autoSyncSchema: false,
+    tabs: [tab],
+    activeTabId: tab.id,
     createdAt: now,
     updatedAt: now,
   };
@@ -75,6 +92,10 @@ export function parseShareHash(hash: string): WorkspaceRecord | null {
     const workspace = createWorkspaceRecord(`${payload.name}（分享）`, payload.sql, payload.dialect);
     workspace.viewMode = payload.viewMode === 'dataflow' ? 'dataflow' : 'er';
     workspace.positions = normalizePositions(payload.positions);
+    const firstTab = workspace.tabs[0];
+    if (firstTab) {
+      workspace.tabs = [{ ...firstTab, sql: workspace.sql, dialect: workspace.dialect, viewMode: workspace.viewMode, positions: workspace.positions }];
+    }
     return workspace;
   } catch { return null; }
 }
@@ -84,14 +105,21 @@ export function snapshotWorkspace(state: {
   viewMode: 'er' | 'dataflow'; nodePositions: WorkspacePositions; databaseProfileId?: string;
   erScope: WorkspaceRecord['erScope']; selectedTableIds: string[]; autoSyncSchema: boolean;
   schemaSnapshot: WorkspaceRecord['schemaSnapshot'] | null;
+  tabs?: WorkspaceTab[]; activeTabId?: string | null;
 }, createdAt = Date.now()): WorkspaceRecord | null {
   if (!state.currentWorkspaceId) return null;
+  const tabs = (state.tabs ?? []).map(tab => tab.id === state.activeTabId
+    ? { ...tab, sql: state.sql, dialect: state.dialect, viewMode: state.viewMode, positions: state.nodePositions, erScope: state.erScope, selectedTableIds: [...state.selectedTableIds] }
+    : tab);
+  const activeTab = tabs.find(tab => tab.id === state.activeTabId) ?? tabs[0];
+  const activeTabId = state.activeTabId && tabs.some(tab => tab.id === state.activeTabId) ? state.activeTabId : activeTab?.id ?? '';
   return {
-    schemaVersion: 2, id: state.currentWorkspaceId, name: normalizeName(state.workspaceName), sql: state.sql,
+    schemaVersion: 3, id: state.currentWorkspaceId, name: normalizeName(state.workspaceName), sql: state.sql,
     dialect: state.dialect, viewMode: state.viewMode, positions: state.nodePositions,
     databaseProfileId: state.databaseProfileId, erScope: state.erScope,
     selectedTableIds: [...state.selectedTableIds], autoSyncSchema: state.autoSyncSchema,
-    schemaSnapshot: state.schemaSnapshot ?? undefined, createdAt, updatedAt: Date.now(),
+    schemaSnapshot: state.schemaSnapshot ?? undefined, tabs, activeTabId,
+    createdAt, updatedAt: Date.now(),
   };
 }
 
@@ -107,24 +135,62 @@ function normalizeImportedWorkspace(value: WorkspaceRecord | WorkspaceRecordV1):
     selectedTableIds: [...migrated.selectedTableIds],
     autoSyncSchema: migrated.autoSyncSchema,
     schemaSnapshot: migrated.schemaSnapshot,
+    tabs: migrated.tabs,
+    activeTabId: migrated.activeTabId,
   };
 }
 
+function singleTabFrom(value: { sql: string; dialect: Dialect; viewMode: 'er' | 'dataflow'; positions: WorkspacePositions; erScope: WorkspaceRecord['erScope']; selectedTableIds: string[] }): WorkspaceTab {
+  return makeTab({
+    name: '查询 1',
+    sql: value.sql,
+    dialect: value.dialect,
+    viewMode: value.viewMode,
+    positions: normalizePositions(value.positions),
+    erScope: value.erScope,
+    selectedTableIds: Array.isArray(value.selectedTableIds) ? value.selectedTableIds.filter(id => typeof id === 'string') : [],
+  });
+}
+
+function sanitizeTabs(value: unknown): WorkspaceTab[] {
+  const raw = Array.isArray(value) ? value : [];
+  return raw.map((item, index) => {
+    const tab = item as Partial<WorkspaceTab> | null;
+    if (!tab || typeof tab !== 'object' || typeof tab.sql !== 'string' || !isDialect(tab.dialect)) return null;
+    return makeTab({
+      id: typeof tab.id === 'string' && tab.id ? tab.id : crypto.randomUUID(),
+      name: typeof tab.name === 'string' && tab.name.trim() ? normalizeName(tab.name) : ['查询', String(index + 1)].join(' '),
+      sql: tab.sql,
+      dialect: tab.dialect,
+      viewMode: tab.viewMode === 'dataflow' ? 'dataflow' : 'er',
+      positions: normalizePositions(tab.positions),
+      erScope: tab.erScope === 'database-schema' ? 'database-schema' : 'current-sql',
+      selectedTableIds: Array.isArray(tab.selectedTableIds) ? tab.selectedTableIds.filter(id => typeof id === 'string') : [],
+    });
+  }).filter((tab): tab is WorkspaceTab => tab != null);
+}
+
 export function migrateWorkspace(value: WorkspaceRecord | WorkspaceRecordV1): WorkspaceRecord {
-  if (value.schemaVersion === 2) {
-    return {
-      ...value,
-      erScope: value.erScope === 'database-schema' ? 'database-schema' : 'current-sql',
-      selectedTableIds: Array.isArray(value.selectedTableIds) ? value.selectedTableIds.filter(id => typeof id === 'string') : [],
-      autoSyncSchema: value.autoSyncSchema === true,
-    };
-  }
-  return {
+  const legacyFields = value as WorkspaceRecordV1 & Omit<WorkspaceRecord, 'schemaVersion'>;
+  const base = {
     ...value,
-    schemaVersion: 2,
-    erScope: 'current-sql',
-    selectedTableIds: [],
-    autoSyncSchema: false,
+    erScope: legacyFields.erScope === 'database-schema' ? 'database-schema' : 'current-sql',
+    selectedTableIds: Array.isArray(legacyFields.selectedTableIds) ? legacyFields.selectedTableIds.filter(id => typeof id === 'string') : [],
+    autoSyncSchema: legacyFields.autoSyncSchema === true,
+  };
+  const legacy = base as WorkspaceRecord & { tabs?: WorkspaceTab[]; activeTabId?: string };
+  if (legacy.schemaVersion === 3) {
+    let tabs = sanitizeTabs(legacy.tabs);
+    if (tabs.length === 0) tabs = [singleTabFrom(legacy)];
+    const activeTabId = tabs.some(tab => tab.id === legacy.activeTabId) ? legacy.activeTabId : tabs[0]?.id ?? '';
+    return { ...legacy, schemaVersion: 3, tabs, activeTabId };
+  }
+  const tab = singleTabFrom(legacy);
+  return {
+    ...legacy,
+    schemaVersion: 3,
+    tabs: [tab],
+    activeTabId: tab.id,
   };
 }
 

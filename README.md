@@ -8,8 +8,8 @@ SQL 默认只在本机处理，不需要登录，也不会上传到服务器。
 
 [下载安装版](https://github.com/duyanta123/SQL-/releases/latest/download/SQL-Visualizer-Setup.exe) · [下载便携版](https://github.com/duyanta123/SQL-/releases/latest/download/SQL-Visualizer-Portable.exe) · [查看历史版本](https://github.com/duyanta123/SQL-/releases)
 
-- 安装版：支持选择安装目录，适合日常使用。
-- 便携版：无需安装，下载后直接运行。
+- 安装版：支持选择安装目录，适合日常使用；工具栏可“检查更新”，新版本下载完成后退出应用时自动安装。
+- 便携版：无需安装，下载后直接运行（便携版不支持自动更新，请手动下载新版）。
 - Web 版：克隆源码后运行 `npm run dev`，但不能连接本机数据库。
 
 Windows SmartScreen 可能会提示未知发布者。请确认文件来自本仓库的 GitHub Release 后，再选择“更多信息”并继续运行。
@@ -20,19 +20,27 @@ Windows SmartScreen 可能会提示未知发布者。请确认文件来自本仓
 2. 选择对应的 SQL 方言。
 3. 在右侧切换“ER 图”或“数据流图”。
 4. 使用“适应内容”或“布局”整理画布，也可以直接拖动节点。
-5. 通过导出菜单保存 PNG 或 SVG。
+5. 通过导出菜单保存 PNG 或 SVG（按当前主题导出）。
+6. 工具栏右侧可切换亮色 / 暗色 / 跟随系统主题，偏好保存在本地。
+7. 画布操作支持撤销 / 重做；顶部搜索框可按表名、列名或节点内容定位节点。
+
+快捷键：`Ctrl+F` 聚焦画布搜索、`1` / `2` 切换 ER / 数据流图、`0` 适应内容、`Ctrl+Z` / `Ctrl+Shift+Z` 撤销 / 重做画布操作、编辑器内 `Ctrl+Shift+F` 格式化 SQL。
 
 在手机浏览器中，使用顶部的“编辑器 / 图形”切换面板；次要操作位于图形页右上角的操作菜单中。
 
 ## 可以分析什么
 
-- `SELECT`、`JOIN`、CTE、子查询。
-- `CREATE TABLE`、`CREATE TABLE AS SELECT`。
-- `INSERT ... SELECT`、`UPDATE`、`DELETE`。
+- `SELECT`、`JOIN`、`UNION`、CTE（含递归 CTE）、子查询。
+- `CREATE TABLE`、`CREATE TABLE AS SELECT`、`CREATE VIEW`。
+- `INSERT ... SELECT`、`UPDATE`、`DELETE`，以及 `INSERT ... ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`（标记为 UPSERT）。
 - 投影、JOIN、`WHERE` 和 `HAVING` 中带表名或别名的字段引用。
+- 列级血缘：数据流图中悬停表与结果之间的连线，可查看每个结果列来自哪张表的哪个字段（含聚合、`CASE`、窗口函数、类型转换等表达式的原始文本），以及 `WHERE`/`HAVING` 中引用该表的过滤列。
+- 表达式展示：JOIN 条件悬浮层保留完整的 `AND`/`OR` 与括号分组；结果节点显示 `WHERE`/`HAVING` 摘要。
 - DDL 中的主键、唯一键和外键关系。
 
-普通查询中推断出的字段会显示“推断”标记，其类型为 `unknown`。未限定表名且无法可靠归属的字段不会被强行放入某张表。
+解析器暂不支持的语句（如 T-SQL `MERGE`、PostgreSQL `CREATE MATERIALIZED VIEW`）会保留上一次有效图形并显示错误提示。
+
+普通查询中推断出的字段会显示“推断”标记。类型通过启发式推测：数值比较、聚合参数、数值运算与 CAST 推断为 `number`，`LIKE` 与字符串字面量推断为 `string`，布尔字面量推断为 `boolean`，日期字面量推断为 `date`；证据冲突时保持 `unknown`（不猜测），且绝不覆盖 DDL 或真实 Schema 的类型。未限定表名且无法可靠归属的字段不会被强行放入某张表。
 
 字段信息按以下优先级合并：
 
@@ -48,9 +56,12 @@ Windows SmartScreen 可能会提示未知发布者。请确认文件来自本仓
 
 | 数据库 | 连接方式 | 读取内容 |
 | --- | --- | --- |
-| SQLite | 选择本机数据库文件 | 表、列、主键、唯一键、外键 |
-| MySQL | 主机、端口、数据库、用户名、密码 | `information_schema` 中的 Schema 元数据 |
-| PostgreSQL | 主机、端口、数据库、用户名、密码、Schema | `information_schema` 中的 Schema 元数据 |
+| SQLite | 选择本机数据库文件 | 表、视图、列、主键、唯一键、外键、索引 |
+| MySQL | 主机、端口、数据库、用户名、密码 | `information_schema` 中的 Schema 元数据（含注释、索引、视图） |
+| PostgreSQL | 主机、端口、数据库、用户名、密码、Schema | `information_schema` 中的 Schema 元数据（含注释、索引、视图、CHECK 约束） |
+| SQL Server | 主机、端口、数据库、SQL 或 Windows 集成认证、Schema（默认 dbo） | `INFORMATION_SCHEMA` 中的 Schema 元数据 |
+
+读取的注释会显示在 ER 图节点与列的悬停提示中；Schema 面板中视图带“视图”标记，可与其他表一样勾选展示。
 
 连接步骤：
 
@@ -73,10 +84,11 @@ Windows SmartScreen 可能会提示未知发布者。请确认文件来自本仓
 ## 工作区和文件
 
 - 工作区保存在浏览器或桌面应用的本地 IndexedDB 中。
-- `.sql` 文件只包含 SQL 文本。
-- `.sqlviz` 文件可保存 SQL、方言、视图、节点位置、表选择和无密码的 Schema 快照。
-- 分享链接只包含 SQL 和基础视图信息，不包含数据库凭据或完整 Schema。
-- 旧版 `schemaVersion: 1` 工作区会自动迁移到当前格式。
+- 每个工作区支持多个 SQL 标签页：编辑器顶部的标签栏可新建、切换、关闭（双击重命名）；每个标签页独立保存 SQL、方言、视图、节点位置和表选择。
+- `.sql` 文件只包含当前标签页的 SQL 文本。
+- `.sqlviz` 文件可保存全部标签页、方言、视图、节点位置、表选择和无密码的 Schema 快照。
+- 分享链接只包含当前标签页的 SQL 和基础视图信息，不包含数据库凭据或完整 Schema。
+- 旧版 `schemaVersion: 1` / `2` 工作区会自动迁移到当前格式（`3`）。
 
 ## 数据和隐私
 

@@ -37,10 +37,11 @@ export function normalizeTableRef(value: unknown): NormalizedTableRef | null {
   }
 
   const nested = asNode(node.table);
-  const table = identifier(nested?.table ?? nested?.name ?? node.table ?? node.name);
+  const view = asNode(node.view);
+  const table = identifier(nested?.table ?? nested?.name ?? node.table ?? node.name ?? view?.view);
   if (!table) return null;
-  const db = identifier(node.db ?? nested?.db) || undefined;
-  const schema = identifier(node.schema ?? nested?.schema) || undefined;
+  const db = identifier(node.db ?? nested?.db ?? view?.db) || undefined;
+  const schema = identifier(node.schema ?? nested?.schema ?? view?.schema) || undefined;
   const alias = identifier(node.as ?? nested?.as) || undefined;
   return { table, db, schema, alias, id: tableId({ table, db, schema }) };
 }
@@ -118,17 +119,19 @@ export function walkAst(root: unknown, visitor: (node: AstNode) => boolean | voi
   visit(root);
 }
 
+export function outputColumnName(raw: unknown): string {
+  if (raw === '*') return '*';
+  const column = asNode(raw);
+  if (!column) return '';
+  const alias = identifier(column.as);
+  if (alias) return alias;
+  const expr = asNode(column.expr);
+  const ref = getColumnRef(expr);
+  if (ref) return ref.column;
+  const type = identifier(expr?.type);
+  return type === 'aggr_func' ? `${identifier(expr?.name)}(...)` : '';
+}
+
 export function outputColumns(select: unknown): string[] {
-  return asArray(asNode(select)?.columns).map(raw => {
-    if (raw === '*') return '*';
-    const column = asNode(raw);
-    if (!column) return '';
-    const alias = identifier(column.as);
-    if (alias) return alias;
-    const expr = asNode(column.expr);
-    const ref = getColumnRef(expr);
-    if (ref) return ref.column;
-    const type = identifier(expr?.type);
-    return type === 'aggr_func' ? `${identifier(expr?.name)}(...)` : '';
-  }).filter(Boolean);
+  return asArray(asNode(select)?.columns).map(outputColumnName).filter(Boolean);
 }

@@ -40,14 +40,17 @@ describe('workspace exchange', () => {
       schemaVersion: 1, id: 'old', name: 'Old', sql: 'SELECT 1', dialect: 'mysql', viewMode: 'er',
       positions: { er: {}, dataflow: {} }, createdAt: 1, updatedAt: 1,
     });
-    expect(migrated).toMatchObject({ schemaVersion: 2, erScope: 'current-sql', selectedTableIds: [], autoSyncSchema: false });
+    expect(migrated).toMatchObject({ schemaVersion: 3, erScope: 'current-sql', selectedTableIds: [], autoSyncSchema: false });
+    expect(migrated.tabs).toHaveLength(1);
+    expect(migrated.tabs[0]).toMatchObject({ sql: 'SELECT 1', dialect: 'mysql' });
+    expect(migrated.activeTabId).toBe(migrated.tabs[0]?.id);
     const workspace = createWorkspaceRecord('Desktop', 'SELECT 1');
     workspace.databaseProfileId = 'private-profile';
     workspace.schemaSnapshot = { connectionId: 'private-profile', fetchedAt: 1, tables: [] };
     const hash = buildShareHash(workspace);
     expect(decodeURIComponent(hash)).not.toContain('private-profile');
-    (workspace as any).password = 'top-secret';
-    (workspace.schemaSnapshot as any).rememberedPassword = 'nested-secret';
+    (workspace as unknown as { password?: string }).password = 'top-secret';
+    (workspace.schemaSnapshot as unknown as { rememberedPassword?: string }).rememberedPassword = 'nested-secret';
     const file = serializeWorkspaceFile(workspace);
     expect(file).not.toContain('top-secret');
     expect(file).not.toContain('nested-secret');

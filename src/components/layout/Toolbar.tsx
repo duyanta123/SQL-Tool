@@ -4,8 +4,9 @@ import type { Dialect } from '@/types/sql';
 import { DIALECTS } from '@/config/dialects';
 import type { ViewMode } from '@/types/shared';
 import { SAMPLE_QUERIES } from '@/utils/test-sql';
-import { DatabaseIcon, DownloadIcon, LayoutIcon, PlayIcon } from '../shared/Icon';
+import { DatabaseIcon, DownloadIcon, LayoutIcon, MonitorIcon, MoonIcon, PlayIcon, RedoIcon, SparklesIcon, SunIcon, UndoIcon } from '../shared/Icon';
 import { desktopDatabaseAvailable } from '@/services/database';
+import { checkForUpdates, desktopUpdatesAvailable } from '@/services/updates';
 
 const SupportDialog = lazy(() => import('../shared/SupportDialog').then(module => ({ default: module.SupportDialog })));
 
@@ -30,6 +31,12 @@ export function Toolbar({ onExportPNG, onExportSVG, onAutoLayout, onFitView, onO
   const editorCollapsed = useAppStore(s => s.isEditorCollapsed);
   const setEditorCollapsed = useAppStore(s => s.setEditorCollapsed);
   const pushToast = useAppStore(s => s.pushToast);
+  const theme = useAppStore(s => s.theme);
+  const setTheme = useAppStore(s => s.setTheme);
+  const canUndo = useAppStore(s => s.past.length > 0);
+  const canRedo = useAppStore(s => s.future.length > 0);
+  const undoCanvas = useAppStore(s => s.undoCanvas);
+  const redoCanvas = useAppStore(s => s.redoCanvas);
   const [menu, setMenu] = useState<'sample' | 'export' | 'more' | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -42,6 +49,25 @@ export function Toolbar({ onExportPNG, onExportSVG, onAutoLayout, onFitView, onO
   }, []);
 
   const selectSample = (sql: string) => { setSQL(sql); setMenu(null); };
+  const themeLabel = theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统';
+  const cycleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light');
+    setMenu(null);
+  };
+  const updateAction = async () => {
+    setMenu(null);
+    try { await checkForUpdates(); } catch (error) { pushToast('error', error instanceof Error ? error.message : String(error)); }
+  };
+  const formatSQL = async () => {
+    setMenu(null);
+    const { tryFormatSQL } = await import('@/utils/sql-format');
+    const state = useAppStore.getState();
+    const result = tryFormatSQL(state.sql, state.dialect);
+    if (result.error) { pushToast('error', `格式化失败：${result.error}`); return; }
+    if (result.sql === state.sql) { pushToast('info', 'SQL 已符合当前格式'); return; }
+    state.setSQL(result.sql);
+    pushToast('success', '已格式化 SQL');
+  };
   const databaseAction = () => {
     setMenu(null);
     if (!desktopAvailable) pushToast('info', '数据库连接仅桌面版可用');
@@ -60,6 +86,13 @@ export function Toolbar({ onExportPNG, onExportSVG, onAutoLayout, onFitView, onO
       <select className="dialect-select" aria-label="SQL 方言" value={dialect} onChange={event => setDialect(event.target.value as Dialect)}>{DIALECTS.map(item => <option key={item.id} value={item.id}>{item.label}{item.experimental ? '（实验）' : ''}</option>)}</select>
 
       <div className="desktop-toolbar-actions">
+        <button className="toolbar-button" type="button" onClick={cycleTheme} title={`主题：${themeLabel}`} aria-label="切换主题">
+          {theme === 'light' ? <SunIcon size={14} /> : theme === 'dark' ? <MoonIcon size={14} /> : <MonitorIcon size={14} />}
+        </button>
+        <button className="toolbar-button" type="button" onClick={() => void formatSQL()} title="格式化 SQL（Ctrl+Shift+F）"><SparklesIcon size={14} /><span>格式化</span></button>
+        <button className="toolbar-button" type="button" onClick={undoCanvas} disabled={!canUndo} title="撤销画布操作（Ctrl+Z）"><UndoIcon size={14} /></button>
+        <button className="toolbar-button" type="button" onClick={redoCanvas} disabled={!canRedo} title="重做画布操作（Ctrl+Shift+Z）"><RedoIcon size={14} /></button>
+        {desktopUpdatesAvailable() && <button className="toolbar-button" type="button" onClick={() => void updateAction()} title="检查更新（安装版）">检查更新</button>}
         <ToolbarMenu label="示例" icon={<PlayIcon size={13} />} open={menu === 'sample'} onToggle={() => setMenu(menu === 'sample' ? null : 'sample')}>
           {SAMPLE_QUERIES.map(query => <MenuItem key={query.name} onClick={() => selectSample(query.sql)}>{query.name}</MenuItem>)}
         </ToolbarMenu>
@@ -79,6 +112,11 @@ export function Toolbar({ onExportPNG, onExportSVG, onAutoLayout, onFitView, onO
         <button className="icon-toolbar-button" type="button" aria-label="更多图形操作" aria-expanded={menu === 'more'} onClick={() => setMenu(menu === 'more' ? null : 'more')}>⋯</button>
         {menu === 'more' && <div className="toolbar-menu mobile-action-menu">
           <MenuItem onClick={onFitView}>适应内容</MenuItem><MenuItem onClick={onAutoLayout}>自动布局</MenuItem>
+          <MenuItem onClick={cycleTheme}>主题：{themeLabel}</MenuItem>
+          <MenuItem onClick={() => void formatSQL()}>格式化 SQL</MenuItem>
+          {canUndo && <MenuItem onClick={undoCanvas}>撤销画布操作</MenuItem>}
+          {canRedo && <MenuItem onClick={redoCanvas}>重做画布操作</MenuItem>}
+          {desktopUpdatesAvailable() && <MenuItem onClick={() => void updateAction()}>检查更新</MenuItem>}
           <MenuItem onClick={() => setSupportOpen(true)}>支持范围</MenuItem><MenuItem onClick={databaseAction}>{desktopAvailable ? '连接数据库' : '数据库（仅桌面版）'}</MenuItem>
           {schemaSnapshot && <MenuItem onClick={onOpenSchema}>选择数据库表</MenuItem>}
           {SAMPLE_QUERIES.map(query => <MenuItem key={query.name} onClick={() => selectSample(query.sql)}>示例：{query.name}</MenuItem>)}

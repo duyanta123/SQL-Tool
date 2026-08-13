@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { WorkspaceMenu } from '../workspace/WorkspaceMenu';
+import { TabBar } from '../workspace/TabBar';
 
 interface AppShellProps { editor: ReactNode; canvas: ReactNode; statusBar: ReactNode }
 
@@ -39,6 +40,7 @@ export function AppShell({ editor, canvas, statusBar }: AppShellProps) {
             <span className="brand-name">SQL Visualizer</span>
             <WorkspaceMenu />
           </header>
+          <TabBar />
           <div className="editor-content">{editor}</div>
           {statusBar}
         </section>

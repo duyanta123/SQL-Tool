@@ -12,6 +12,7 @@ export interface ERColumn {
   fkRefColumn?: string;
   nullable?: boolean;
   isUnique?: boolean;
+  comment?: string;
 }
 
 export interface ERTableNodeData {
@@ -23,6 +24,7 @@ export interface ERTableNodeData {
   columns: ERColumn[];
   source: 'ddl' | 'database' | 'dml' | 'inferred';
   statementId: string;
+  comment?: string;
 }
 
 export interface ERVirtualNodeData {

@@ -1,6 +1,6 @@
 const path = require('node:path');
 
-const KINDS = new Set(['sqlite', 'mysql', 'postgresql']);
+const KINDS = new Set(['sqlite', 'mysql', 'postgresql', 'mssql']);
 const ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function validateConnectionId(value) {
@@ -27,8 +27,14 @@ function validateProfile(raw, { allowMissingFile = false } = {}) {
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('端口必须在 1 到 65535 之间');
     profile.port = port;
     profile.database = cleanText(raw.database, '数据库名', 128);
-    profile.username = cleanText(raw.username, '用户名', 128);
+    if (kind === 'mssql' && raw.authType === 'windows') {
+      profile.authType = 'windows';
+    } else {
+      profile.authType = 'sql';
+      profile.username = cleanText(raw.username, '用户名', 128);
+    }
     if (raw.schema != null && raw.schema !== '') profile.schema = cleanText(raw.schema, 'Schema', 128);
+    if (kind === 'mssql') profile.encrypt = raw.encrypt !== false;
   }
   if (raw.password != null) {
     if (typeof raw.password !== 'string' || raw.password.length > 1024) throw new Error('密码格式无效');

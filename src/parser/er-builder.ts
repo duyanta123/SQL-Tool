@@ -1,11 +1,37 @@
 import type { ERColumn, ERGraph, ERGraphEdge, ERGraphNode, JoinCondition } from '@/types/er-diagram';
 import type { DatabaseSchemaSnapshot, SchemaTable } from '@/types/database';
-import { asNode, getColumnRef, getCtes, getFromItems, getSubquery, identifier, normalizeTableRef, outputColumns, statementType, walkAst, type AstNode, type NormalizedTableRef } from './ast-normalizer';
+import { asArray, asNode, getColumnRef, getCtes, getFromItems, getSubquery, identifier, normalizeTableRef, outputColumns, statementType, walkAst, type AstNode, type NormalizedTableRef } from './ast-normalizer';
 import { extractDDL, type DDLInfo } from './extractors/ddl';
 import { mergeColumnsByPriority } from './extractors/columns';
-import { extractEQPairs } from './utils/condition-expr';
+import { extractEQPairs, binaryToSQL } from './utils/condition-expr';
 
 interface SchemaEntry extends DDLInfo { ref: NormalizedTableRef }
+
+type InferredType = 'number' | 'string' | 'date' | 'boolean';
+
+const NUMBER_TYPES = new Set(['int', 'integer', 'bigint', 'smallint', 'tinyint', 'numeric', 'decimal', 'float', 'double', 'real', 'unsigned', 'serial']);
+const STRING_TYPES = new Set(['varchar', 'char', 'text', 'string', 'nvarchar', 'clob']);
+const DATE_TYPES = new Set(['date', 'datetime', 'timestamp', 'time', 'timestamptz']);
+const BOOLEAN_TYPES = new Set(['bool', 'boolean']);
+
+function normalizeInferredType(value: string): InferredType | undefined {
+  const v = value.toLowerCase();
+  if (NUMBER_TYPES.has(v)) return 'number';
+  if (STRING_TYPES.has(v)) return 'string';
+  if (DATE_TYPES.has(v)) return 'date';
+  if (BOOLEAN_TYPES.has(v)) return 'boolean';
+  return undefined;
+}
+
+function literalInferredType(node: AstNode | null): InferredType | undefined {
+  if (!node) return undefined;
+  const type = identifier(node.type).toLowerCase();
+  if (['number', 'double', 'int', 'decimal', 'bigint', 'float'].includes(type)) return 'number';
+  if (['single_quote_string', 'string'].includes(type)) return 'string';
+  if (['bool', 'boolean'].includes(type)) return 'boolean';
+  if (type === 'date') return 'date';
+  return undefined;
+}
 
 export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSchemaSnapshot | null): ERGraph {
   const nodes = new Map<string, ERGraphNode>();
@@ -40,11 +66,36 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
     return id;
   };
 
-  const addInferredColumn = (nodeId: string, name: string) => {
+  const ensureView = (ref: NormalizedTableRef, query: AstNode | null, declared: string[], statementId: string): string => {
+    const id = `table::${ref.id}`;
+    const existing = nodes.get(id);
+    if (!existing) {
+      const names = declared.length ? declared : query ? outputColumns(query) : [];
+      const columns: ERColumn[] = names.map(name => ({ name, type: 'unknown', source: 'ddl', isPK: false, isFK: false }));
+      nodes.set(id, {
+        id,
+        kind: 'table',
+        tableName: ref.table,
+        displayName: ref.id,
+        tableType: 'view',
+        columns,
+        source: 'ddl',
+        statementId,
+      });
+    }
+    return id;
+  };
+
+  const addInferredColumn = (nodeId: string, name: string, type = 'unknown') => {
     if (!name || name === '*') return;
     const node = nodes.get(nodeId);
-    if (!node || node.columns.some(column => column.name.toLowerCase() === name.toLowerCase())) return;
-    node.columns.push({ name, type: 'unknown', source: 'sql-inferred', isPK: false, isFK: false });
+    if (!node) return;
+    const existing = node.columns.find(column => column.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      if (existing.source === 'sql-inferred' && existing.type === 'unknown' && type !== 'unknown') existing.type = type;
+      return;
+    }
+    node.columns.push({ name, type, source: 'sql-inferred', isPK: false, isFK: false });
   };
 
   // Pass one: build a schema catalog so later joins can use declared metadata.
@@ -121,6 +172,82 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
       if (!item.join && !primaryId) primaryId = nodeId;
     }
 
+    // 类型启发式：从比较/聚合/CAST 收集每个限定字段的类型证据，
+    // 证据一致时用于推断列类型；冲突时保持 unknown（不猜测）。
+    const typeHints = new Map<string, Map<string, Set<InferredType>>>();
+    const addTypeHint = (nodeId: string, column: string, hint: InferredType) => {
+      const byColumn = typeHints.get(nodeId) ?? new Map<string, Set<InferredType>>();
+      const set = byColumn.get(column.toLowerCase()) ?? new Set<InferredType>();
+      set.add(hint);
+      byColumn.set(column.toLowerCase(), set);
+      typeHints.set(nodeId, byColumn);
+    };
+    const hintFor = (nodeId: string, column: string): string => {
+      const set = typeHints.get(nodeId)?.get(column.toLowerCase());
+      if (!set || set.size !== 1) return 'unknown';
+      const only = [...set][0];
+      return only ?? 'unknown';
+    };
+
+    const collectTypeHints = (root: unknown) => {
+      walkAst(root, node => {
+        if (statementType(node) === 'select') return false;
+        const type = identifier(node.type).toLowerCase();
+
+        if (type === 'aggr_func') {
+          const name = identifier(node.name).toUpperCase();
+          if (['COUNT', 'SUM', 'AVG', 'STDDEV', 'STDDEV_POP', 'STDDEV_SAMP', 'VARIANCE', 'VAR_POP', 'VAR_SAMP'].includes(name)) {
+            walkAst(node.args, inner => {
+              const ref = getColumnRef(inner);
+              if (ref?.table) {
+                const tableId = aliases.get(ref.table.toLowerCase());
+                if (tableId) addTypeHint(tableId, ref.column, 'number');
+              }
+            });
+          }
+          return false;
+        }
+
+        if (type === 'cast') {
+          const ref = getColumnRef(asNode(node.expr));
+          const target = identifier(asNode(asArray(node.target)[0])?.dataType);
+          const hint = normalizeInferredType(target);
+          if (ref?.table && hint) {
+            const tableId = aliases.get(ref.table.toLowerCase());
+            if (tableId) addTypeHint(tableId, ref.column, hint);
+          }
+        }
+
+        if (type === 'binary_expr') {
+          const op = identifier(node.operator).toUpperCase();
+          const left = asNode(node.left);
+          const right = asNode(node.right);
+          const leftRef = getColumnRef(left);
+          const rightRef = getColumnRef(right);
+          const apply = (ref: { table: string; column: string } | null, hint: InferredType) => {
+            if (!ref?.table) return;
+            const tableId = aliases.get(ref.table.toLowerCase());
+            if (tableId) addTypeHint(tableId, ref.column, hint);
+          };
+          if (['>', '<', '>=', '<=', 'BETWEEN'].includes(op)) {
+            apply(leftRef, 'number');
+            apply(rightRef, 'number');
+          } else if (['LIKE', 'ILIKE'].includes(op)) {
+            apply(leftRef, 'string');
+            apply(rightRef, 'string');
+          } else if (['+', '-', '*', '/'].includes(op)) {
+            if (literalInferredType(left) === 'number') apply(rightRef, 'number');
+            if (literalInferredType(right) === 'number') apply(leftRef, 'number');
+          } else if (['=', '<>', '!='].includes(op)) {
+            const leftHint = literalInferredType(left);
+            const rightHint = literalInferredType(right);
+            if (leftHint) apply(rightRef, leftHint);
+            if (rightHint) apply(leftRef, rightHint);
+          }
+        }
+      });
+    };
+
     // Only qualified references can be assigned safely. Nested SELECTs are
     // processed in their own alias scope and are deliberately skipped here.
     const inferQualifiedColumns = (root: unknown) => {
@@ -129,9 +256,13 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
         const ref = getColumnRef(node);
         if (!ref?.table) return;
         const tableId = aliases.get(ref.table.toLowerCase());
-        if (tableId) addInferredColumn(tableId, ref.column);
+        if (tableId) addInferredColumn(tableId, ref.column, hintFor(tableId, ref.column));
       });
     };
+    collectTypeHints(select.columns);
+    fromItems.forEach(item => collectTypeHints(item.on));
+    collectTypeHints(select.where);
+    collectTypeHints(select.having);
     inferQualifiedColumns(select.columns);
     fromItems.forEach(item => inferQualifiedColumns(item.on));
     inferQualifiedColumns(select.where);
@@ -157,7 +288,12 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
       const resolvedTarget = pairs[0] ? aliases.get(pairs[0].rightTable.toLowerCase()) : targetId;
       if (!sourceId || !resolvedTarget) continue;
       const joinType = normalizeJoinType(identifier(item.join));
-      const conditionSQL = conditions.map(c => `${c.leftTable}.${c.leftColumn} ${c.operator} ${c.rightTable}.${c.rightColumn}`).join(' AND ');
+      const resolveAlias = (alias: string): string => {
+        const nodeId = aliases.get(alias.toLowerCase());
+        return nodeId ? (labels.get(nodeId) ?? alias) : alias;
+      };
+      const conditionSQL = binaryToSQL(item.on, resolveAlias)
+        || conditions.map(c => `${c.leftTable}.${c.leftColumn} ${c.operator} ${c.rightTable}.${c.rightColumn}`).join(' AND ');
       addEdge({
         source: sourceId,
         target: resolvedTarget,
@@ -222,8 +358,19 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
       });
     }
     if (type === 'create') {
-      const query = asNode(node.query_expr ?? node.as);
-      if (query && statementType(query) === 'select') processSelect(query, statementId);
+      const keyword = identifier(node?.keyword).toLowerCase();
+      if (keyword === 'view') {
+        const ref = normalizeTableRef(node);
+        const query = asNode(node?.select ?? node?.query_expr ?? node?.as);
+        if (ref) {
+          const declared = asArray(node?.columns).map(identifier).filter(Boolean);
+          ensureView(ref, query, declared, statementId);
+        }
+        if (query && statementType(query) === 'select') processSelect(query, statementId);
+      } else {
+        const query = asNode(node.query_expr ?? node.as);
+        if (query && statementType(query) === 'select') processSelect(query, statementId);
+      }
     }
   });
 
@@ -307,6 +454,7 @@ function columnsFromDatabaseTable(table: SchemaTable): ERColumn[] {
       nullable: column.nullable,
       fkRefTable: fk?.referencedTableId,
       fkRefColumn: fkIndex >= 0 ? fk?.referencedColumns[fkIndex] : undefined,
+      comment: column.comment,
     };
   });
 }

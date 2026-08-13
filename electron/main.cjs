@@ -1,9 +1,44 @@
 const path = require('node:path');
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const database = require('./database.cjs');
 const { createProfileStore } = require('./profiles.cjs');
 const { validateConnectionId, validateProfile } = require('./validation.cjs');
 const CHANNELS = require('./channels.cjs');
+
+function registerUpdateIPC() {
+  const portable = !!process.env.PORTABLE_EXECUTABLE_DIR;
+  const send = (type, payload) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send('update:event', { type, ...payload });
+    }
+  };
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => send('checking'));
+  autoUpdater.on('update-available', info => send('available', { version: info.version }));
+  autoUpdater.on('update-not-available', info => send('not-available', { version: info.version }));
+  autoUpdater.on('download-progress', progress => send('progress', { percent: Math.round(progress.percent ?? 0) }));
+  autoUpdater.on('update-downloaded', info => send('downloaded', { version: info.version }));
+  autoUpdater.on('error', error => send('error', { message: error?.message ?? String(error) }));
+
+  ipcMain.handle('update.check', async () => {
+    if (!app.isPackaged) return { available: false, dev: true };
+    if (portable) return { available: false, portable: true };
+    const result = await autoUpdater.checkForUpdates();
+    if (!result) return { available: false, version: app.getVersion() };
+    return { available: true, version: result.updateInfo.version };
+  });
+  ipcMain.handle('update.download', async () => {
+    if (!app.isPackaged) return { ok: false, message: '开发模式不支持自动更新' };
+    if (portable) return { ok: false, message: '便携版不支持自动更新' };
+    await autoUpdater.downloadUpdate();
+    return { ok: true };
+  });
+  ipcMain.handle('update.install', () => {
+    autoUpdater.quitAndInstall();
+  });
+}
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -12,7 +47,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 620,
     show: false,
-    backgroundColor: '#ffffff',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#17181c' : '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -67,8 +102,14 @@ function registerDatabaseIPC() {
 
 app.whenReady().then(() => {
   registerDatabaseIPC();
+  registerUpdateIPC();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // 跟随系统主题更新窗口底色，避免暗色下切换时白闪
+  nativeTheme.on('updated', () => {
+    const color = nativeTheme.shouldUseDarkColors ? '#17181c' : '#ffffff';
+    for (const window of BrowserWindow.getAllWindows()) window.setBackgroundColor(color);
+  });
 });
 
 app.on('window-all-closed', () => {
