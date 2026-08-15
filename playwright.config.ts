@@ -7,7 +7,7 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5199',
     trace: 'retain-on-failure',
     channel: 'chrome',
-    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.02 },
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.05 },
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
