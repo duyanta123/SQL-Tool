@@ -3,7 +3,7 @@
   "description": "Local-first SQL ER and data-flow visualizer with read-only desktop database introspection",
   "author": "SQL Visualizer contributors",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
