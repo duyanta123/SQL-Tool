@@ -43,9 +43,12 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
   const processedSelects = new WeakSet<object>();
 
   const ensureTable = (ref: NormalizedTableRef, statementId: string, alias?: string): string => {
-    const id = `table::${ref.id}`;
     const schema = schemas.get(ref.id.toLowerCase());
     const databaseSchema = findDatabaseSchema(databaseSchemas, ref);
+    // 归一化：唯一定位到数据库表时，限定名与非限定名（users / public.users）合并为同一节点
+    const id = databaseSchema
+      ? `table::${databaseSchema.schema ? `${databaseSchema.schema}.` : ''}${databaseSchema.name}`
+      : `table::${ref.id}`;
     const databaseColumns = databaseSchema ? columnsFromDatabaseTable(databaseSchema) : [];
     const existing = nodes.get(id);
     if (!existing) {
@@ -110,7 +113,8 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
   schemas.forEach((schema, _key) => ensureTable(schema.ref, 'schema'));
 
   const addEdge = (edge: Omit<ERGraphEdge, 'id'>) => {
-    if (!edge.source || !edge.target || edge.source === edge.target) return;
+    // 自环边（自引用 FK / 自连接）是有效关系，允许保留
+    if (!edge.source || !edge.target) return;
     const signature = `${edge.source}|${edge.target}|${edge.joinType}|${edge.conditionSQL}`;
     if (edges.has(signature)) return;
     edgeCounter += 1;
@@ -328,6 +332,15 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
         }
       });
     }
+
+    // UNION / UNION ALL 等集合操作：后续分支的表与连接也进入 ER 图（与 dataflow-builder 一致）
+    let unionPrev = select;
+    let unionArm = asNode(unionPrev._next);
+    while (unionArm && statementType(unionArm) === 'select') {
+      processSelect(unionArm, statementId, cteMap);
+      unionPrev = unionArm;
+      unionArm = asNode(unionArm._next);
+    }
   };
 
   statements.forEach((statement, index) => {
@@ -337,16 +350,32 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
     const statementId = `stmt-${index + 1}`;
     if (type === 'select') processSelect(node, statementId);
     if (type === 'insert' || type === 'update' || type === 'delete') {
+      // 语句级 WITH：DML 的 CTE 先注册为节点，供其子 SELECT 解析引用
+      const dmlCtes = getCtes(node);
+      const dmlCteMap = new Map<string, string>();
+      for (const cte of dmlCtes) {
+        const id = `cte::${statementId}::${cte.name.toLowerCase()}`;
+        dmlCteMap.set(cte.name.toLowerCase(), id);
+        nodes.set(id, {
+          id,
+          kind: 'cte',
+          name: cte.name,
+          columns: (cte.columns.length ? cte.columns : outputColumns(cte.statement)).map(column => ({ name: column, type: 'unknown', source: 'sql-inferred', isPK: false, isFK: false })),
+          sqlPreview: 'CTE',
+          statementId,
+        });
+      }
+      for (const cte of dmlCtes) processSelect(cte.statement, statementId, dmlCteMap);
       const target = normalizeTableRef(node.table);
       if (target) ensureTable(target, statementId, target.alias);
       if (type === 'update' && Array.isArray(node.table) && node.table.length > 1) {
-        processSelect({ type: 'select', from: node.table, columns: [] }, statementId);
+        processSelect({ type: 'select', from: node.table, columns: [] }, statementId, dmlCteMap);
       }
       const select = asNode(node.values);
-      if (select && statementType(select) === 'select') processSelect(select, statementId);
+      if (select && statementType(select) === 'select') processSelect(select, statementId, dmlCteMap);
       for (const from of getFromItems(node)) {
         const subquery = getSubquery(from);
-        if (subquery) processSelect(subquery, statementId);
+        if (subquery) processSelect(subquery, statementId, dmlCteMap);
         else {
           const ref = normalizeTableRef(from);
           if (ref) ensureTable(ref, statementId, ref.alias);
@@ -354,7 +383,7 @@ export function buildERGraph(statements: unknown[], schemaSnapshot?: DatabaseSch
       }
       walkAst([node.where, node.set], child => {
         const nested = asNode(asNode(child.expr)?.ast ?? child.ast);
-        if (nested && statementType(nested) === 'select') processSelect(nested, statementId);
+        if (nested && statementType(nested) === 'select') processSelect(nested, statementId, dmlCteMap);
       });
     }
     if (type === 'create') {

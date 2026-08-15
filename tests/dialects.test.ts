@@ -11,8 +11,8 @@ describe('dialect registry', () => {
     expect(DIALECTS.find(dialect => dialect.id === 'snowflake')?.experimental).toBe(true);
   });
 
-  it.each(DIALECTS)('parses a basic SELECT with $label', dialect => {
-    const result = parseSQL('SELECT a.id FROM a', dialect.id);
+  it.each(DIALECTS)('parses a basic SELECT with $label', async dialect => {
+    const result = await parseSQL('SELECT a.id FROM a', dialect.id);
     expect(result.error).toBeNull();
     expect(result.stats.tableCount).toBe(1);
   });

@@ -66,10 +66,13 @@ export function layoutDataFlowGraph(graph: DataFlowGraph): { nodes: Node[]; edge
   });
 
   const edges: Edge[] = [];
+  // 防御：过滤悬空边，避免 dagre 为不存在的端点隐式创建无尺寸占位节点（与 er-layout 规则一致）
+  const nodeIds = new Set(graph.nodes.map(data => data.id));
   graph.edges.forEach((data: DFFlowEdgeData & { id: string; source: string; target: string }) => {
     const sourceId = data.source;
     const targetId = data.target;
     if (!sourceId || !targetId || sourceId === targetId) return;
+    if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) return;
 
     const color = edgeColor(data.kind);
     edges.push({

@@ -49,7 +49,7 @@ export function extractDDL(createStmt: unknown): DDLInfo {
       if (!name) continue;
       const nullableType = identifier(asNode(def.nullable)?.type).toLowerCase();
       const isPK = identifier(def.primary_key).toLowerCase().includes('primary') || identifier(def.unique_or_primary).toLowerCase().includes('primary');
-      const isUnique = isPK || identifier(def.unique).toLowerCase() === 'unique';
+      const isUnique = isPK || identifier(def.unique).toLowerCase().includes('unique');
       const reference = asNode(def.reference_definition ?? asNode(def.definition)?.reference_definition);
       const ref = normalizeTableRef(reference?.table);
       const refColumns = columnNames(reference?.definition ?? reference?.column);

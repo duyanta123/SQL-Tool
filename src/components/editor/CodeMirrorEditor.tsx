@@ -57,7 +57,12 @@ export function CodeMirrorEditor({ dialect }: CodeMirrorEditorProps) {
     run: () => {
       const state = useAppStore.getState();
       const result = tryFormatSQL(state.sql, state.dialect);
-      if (!result.error && result.sql !== state.sql) state.setSQL(result.sql);
+      if (result.error) {
+        // 与工具栏入口行为一致：失败时给出提示而非静默吞掉
+        state.pushToast('error', result.error);
+      } else if (result.sql !== state.sql) {
+        state.setSQL(result.sql);
+      }
       return true;
     },
   }]), []);

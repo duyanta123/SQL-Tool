@@ -28,6 +28,7 @@ export function useWorkspaces(): void {
     let active = true;
     initializationPromise ??= initialize();
     void initializationPromise.then(() => { if (active) useAppStore.getState().setWorkspaceReady(true); }).catch(error => {
+      if (!active) return;
       useAppStore.getState().pushToast('error', `工作区初始化失败：${error instanceof Error ? error.message : String(error)}`);
       useAppStore.getState().setWorkspaceReady(true);
     });

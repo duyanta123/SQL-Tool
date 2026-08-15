@@ -16,8 +16,8 @@
     "test:e2e": "playwright test",
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
-    "desktop:dev": "npm run build && electron .",
-    "desktop:pack": "npm run build && electron-builder --win && npm rebuild better-sqlite3"
+    "desktop:dev": "node scripts/desktop-dev.mjs",
+    "desktop:pack": "npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",

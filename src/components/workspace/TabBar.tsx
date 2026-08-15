@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { closeTab, newTab, renameTab, switchTab } from '@/services/tabs';
 
@@ -7,9 +7,15 @@ export function TabBar() {
   const activeTabId = useAppStore(s => s.activeTabId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  // 区分“提交”与“取消”：Escape 卸载输入框触发的 blur 不应误提交
+  const cancelRef = useRef(false);
 
-  const startRename = (id: string, name: string) => { setEditingId(id); setDraft(name); };
-  const commitRename = () => { if (editingId) renameTab(editingId, draft); setEditingId(null); };
+  const startRename = (id: string, name: string) => { cancelRef.current = false; setEditingId(id); setDraft(name); };
+  const commitRename = () => {
+    if (!cancelRef.current && editingId) renameTab(editingId, draft);
+    cancelRef.current = false;
+    setEditingId(null);
+  };
 
   return (
     <div className="tab-bar" role="tablist" aria-label="SQL 标签页">
@@ -28,7 +34,7 @@ export function TabBar() {
                 onClick={event => event.stopPropagation()}
                 onKeyDown={event => {
                   if (event.key === 'Enter') commitRename();
-                  if (event.key === 'Escape') setEditingId(null);
+                  if (event.key === 'Escape') { cancelRef.current = true; setEditingId(null); }
                 }}
               />
             ) : (

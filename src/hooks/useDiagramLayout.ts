@@ -40,9 +40,9 @@ export function useDiagramLayout() {
   }, [parseResult, nodePositions, erScope, schemaSnapshot, selectedTableIds, setERElements, setDFElements]);
 
   const triggerAutoLayout = useCallback(() => {
-    clearNodePositions(viewMode);
     setSelectedEdge(null);
     if (!parseResult || parseResult.error) return;
+    clearNodePositions(viewMode);
     if (viewMode === 'er') {
       const graph = erScope === 'database-schema' ? buildDatabaseSchemaGraph(schemaSnapshot, selectedTableIds) : parseResult.erGraph;
       const er = layoutERGraph(graph);

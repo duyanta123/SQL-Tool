@@ -22,6 +22,7 @@ export const MiniMapStyled = memo((props: Partial<MiniMapProps>) => {
           case 'source': return '#737373';
           case 'target': return '#30a46c';
           case 'cte': return '#8b5cf6';
+          case 'cte-group': return '#8b5cf6';
           case 'subquery': return '#f97316';
           case 'aggregate': return '#ec4899';
           case 'literal': return '#a3a3a3';

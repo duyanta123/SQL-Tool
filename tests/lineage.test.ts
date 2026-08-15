@@ -11,8 +11,8 @@ function mappingsFor(edge: DataFlowEdge | undefined): DFColumnMapping[] {
 }
 
 describe('列级血缘 column-level lineage', () => {
-  it('把限定字段的投影映射到各自的来源表', () => {
-    const result = parseSQL('SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id', 'mysql');
+  it('把限定字段的投影映射到各自的来源表', async () => {
+    const result = await parseSQL('SELECT u.id, o.total FROM users u JOIN orders o ON u.id = o.user_id', 'mysql');
     expect(result.error).toBeNull();
     const target = resultNode(result.dfGraph, 'target');
     expect(target).toBeDefined();
@@ -26,16 +26,16 @@ describe('列级血缘 column-level lineage', () => {
     expect(mappingsFor(ordersEdge)).toEqual([{ source: { table: 'o', column: 'total' }, target: { column: 'total' } }]);
   });
 
-  it('在源表节点上记录实际引用的列', () => {
-    const result = parseSQL('SELECT u.id, u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id', 'mysql');
+  it('在源表节点上记录实际引用的列', async () => {
+    const result = await parseSQL('SELECT u.id, u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id', 'mysql');
     const users = result.dfGraph.nodes.find((node): node is Extract<typeof node, { kind: 'source' }> => node.kind === 'source' && node.tableName === 'users');
     const orders = result.dfGraph.nodes.find((node): node is Extract<typeof node, { kind: 'source' }> => node.kind === 'source' && node.tableName === 'orders');
     expect(users?.outputColumns).toEqual(['id', 'name']);
     expect(orders?.outputColumns).toEqual(['total']);
   });
 
-  it('处理聚合与 GROUP BY 列并记录表达式文本', () => {
-    const result = parseSQL("SELECT user_id, COUNT(*) AS cnt FROM orders GROUP BY user_id", 'mysql');
+  it('处理聚合与 GROUP BY 列并记录表达式文本', async () => {
+    const result = await parseSQL("SELECT user_id, COUNT(*) AS cnt FROM orders GROUP BY user_id", 'mysql');
     expect(result.error).toBeNull();
     const aggregate = resultNode(result.dfGraph, 'aggregate');
     expect(aggregate).toBeDefined();
@@ -48,8 +48,8 @@ describe('列级血缘 column-level lineage', () => {
     ]));
   });
 
-  it('为 CASE 表达式记录引用列与表达式文本', () => {
-    const result = parseSQL("SELECT CASE WHEN o.status = 'paid' THEN o.total ELSE 0 END AS amount FROM orders o", 'mysql');
+  it('为 CASE 表达式记录引用列与表达式文本', async () => {
+    const result = await parseSQL("SELECT CASE WHEN o.status = 'paid' THEN o.total ELSE 0 END AS amount FROM orders o", 'mysql');
     expect(result.error).toBeNull();
     const target = resultNode(result.dfGraph, 'target');
     const edge = result.dfGraph.edges.find(item => item.target === target?.id);
@@ -60,8 +60,8 @@ describe('列级血缘 column-level lineage', () => {
     expect(mappings.map(mapping => mapping.source.column).sort()).toEqual(['status', 'total']);
   });
 
-  it('跳过无法归属的未限定字段（歧义不猜测）', () => {
-    const result = parseSQL('SELECT id FROM users u JOIN orders o ON u.id = o.user_id', 'mysql');
+  it('跳过无法归属的未限定字段（歧义不猜测）', async () => {
+    const result = await parseSQL('SELECT id FROM users u JOIN orders o ON u.id = o.user_id', 'mysql');
     expect(result.error).toBeNull();
     const target = resultNode(result.dfGraph, 'target');
     const edges = result.dfGraph.edges.filter(edge => edge.target === target?.id);
@@ -71,8 +71,8 @@ describe('列级血缘 column-level lineage', () => {
     }
   });
 
-  it('跨 CTE 追踪列映射', () => {
-    const result = parseSQL('WITH t AS (SELECT id FROM users) SELECT t.id FROM t', 'mysql');
+  it('跨 CTE 追踪列映射', async () => {
+    const result = await parseSQL('WITH t AS (SELECT id FROM users) SELECT t.id FROM t', 'mysql');
     expect(result.error).toBeNull();
     const cteEdge = result.dfGraph.edges.find(edge => edge.kind === 'read' && edge.source.includes('::cte::t'));
     expect(mappingsFor(cteEdge)).toEqual(expect.arrayContaining([
@@ -84,8 +84,8 @@ describe('列级血缘 column-level lineage', () => {
     ]));
   });
 
-  it('记录窗口函数涉及的列', () => {
-    const result = parseSQL('SELECT ROW_NUMBER() OVER (PARTITION BY u.dept ORDER BY u.id) AS rn FROM users u', 'mysql');
+  it('记录窗口函数涉及的列', async () => {
+    const result = await parseSQL('SELECT ROW_NUMBER() OVER (PARTITION BY u.dept ORDER BY u.id) AS rn FROM users u', 'mysql');
     expect(result.error).toBeNull();
     const target = resultNode(result.dfGraph, 'target');
     const edge = result.dfGraph.edges.find(item => item.target === target?.id);
@@ -95,8 +95,8 @@ describe('列级血缘 column-level lineage', () => {
     expect(mappings.map(mapping => mapping.source.column).sort()).toEqual(['dept', 'id']);
   });
 
-  it('子查询作为来源时映射到子查询别名', () => {
-    const result = parseSQL('SELECT s.id FROM (SELECT id FROM users) s', 'mysql');
+  it('子查询作为来源时映射到子查询别名', async () => {
+    const result = await parseSQL('SELECT s.id FROM (SELECT id FROM users) s', 'mysql');
     expect(result.error).toBeNull();
     const subqueryNode = result.dfGraph.nodes.find(node => node.kind === 'subquery');
     expect(subqueryNode).toBeDefined();

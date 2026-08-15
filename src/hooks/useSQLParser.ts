@@ -39,10 +39,12 @@ export function useSQLParser() {
       }, 0);
       return;
     }
+    // 立即递增版本号作废在途响应：避免防抖窗口内旧 SQL 的解析结果覆盖新 SQL 的画布
+    latestRequest.current += 1;
+    const requestId = latestRequest.current;
     setParsing(true);
     const timer = window.setTimeout(() => {
-      latestRequest.current += 1;
-      const request: ParseRequest = { id: latestRequest.current, sql, dialect, schemaSnapshot };
+      const request: ParseRequest = { id: requestId, sql, dialect, schemaSnapshot };
       workerRef.current?.postMessage(request);
     }, PARSE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);

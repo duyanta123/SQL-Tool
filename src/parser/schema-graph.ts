@@ -28,7 +28,7 @@ export function buildDatabaseSchemaGraph(snapshot: DatabaseSchemaSnapshot | null
         rightColumn: foreignKey.referencedColumns[index] ?? '',
         operator: '=',
       }));
-      const allUnique = foreignKey.columns.every(column => table.columns.some(item => item.name === column && (item.isUnique || item.isPrimaryKey)));
+      const allUnique = foreignKey.columns.every(column => table.columns.some(item => item.name.toLowerCase() === column.toLowerCase() && (item.isUnique || item.isPrimaryKey)));
       edges.push({
         id: `schema-edge::${table.id}::${foreignKey.id}`,
         source: nodeId(table.id),
@@ -54,8 +54,9 @@ function nodeId(tableId: string): string {
 
 function columnsFromTable(table: SchemaTable): ERColumn[] {
   return table.columns.map(column => {
-    const foreignKey = table.foreignKeys.find(key => key.columns.includes(column.name));
-    const index = foreignKey?.columns.indexOf(column.name) ?? -1;
+    // 列名比较统一大小写不敏感，与 er-builder 的 columnsFromDatabaseTable 规则一致
+    const foreignKey = table.foreignKeys.find(key => key.columns.some(name => name.toLowerCase() === column.name.toLowerCase()));
+    const index = foreignKey?.columns.findIndex(name => name.toLowerCase() === column.name.toLowerCase()) ?? -1;
     return {
       name: column.name,
       type: column.type || 'unknown',

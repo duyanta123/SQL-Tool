@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { loadDatabaseProfiles, refreshDatabaseSchema } from '@/services/database';
+import { disconnectProfile, loadDatabaseProfiles, refreshDatabaseSchema } from '@/services/database';
 import { useAppStore } from '@/store/useAppStore';
 
 export function useDatabaseSync(): void {
   const workspaceReady = useAppStore(state => state.workspaceReady);
   const profileId = useAppStore(state => state.databaseProfileId);
   const autoSync = useAppStore(state => state.autoSyncSchema);
-  const profiles = useAppStore(state => state.databaseProfiles);
   const previousProfileId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -16,16 +15,20 @@ export function useDatabaseSync(): void {
   useEffect(() => {
     const previous = previousProfileId.current;
     previousProfileId.current = profileId;
-    if (previous && previous !== profileId && window.sqlVisualizerDesktop) void window.sqlVisualizerDesktop.disconnect(previous);
+    if (previous && previous !== profileId && window.sqlVisualizerDesktop) {
+      void disconnectProfile(previous).catch(error => useAppStore.getState().pushToast('error', `断开旧连接失败：${error instanceof Error ? error.message : String(error)}`));
+    }
   }, [profileId]);
 
   useEffect(() => {
-    if (!workspaceReady || !profileId || !autoSync || !window.sqlVisualizerDesktop || !profiles.some(profile => profile.id === profileId)) return;
+    // profiles 校验在 effect 内经 getState 读取，避免 profiles 引用变化触发计划外的额外同步
+    if (!workspaceReady || !profileId || !autoSync || !window.sqlVisualizerDesktop) return;
+    if (!useAppStore.getState().databaseProfiles.some(profile => profile.id === profileId)) return;
     const synchronize = () => void refreshDatabaseSchema().catch(error => {
       useAppStore.getState().pushToast('error', `Schema 同步失败：${error instanceof Error ? error.message : String(error)}`);
     });
     synchronize();
     const timer = window.setInterval(synchronize, 30_000);
     return () => window.clearInterval(timer);
-  }, [workspaceReady, profileId, autoSync, profiles]);
+  }, [workspaceReady, profileId, autoSync]);
 }

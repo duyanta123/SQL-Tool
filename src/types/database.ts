@@ -1,6 +1,8 @@
 export type DatabaseKind = 'sqlite' | 'mysql' | 'postgresql' | 'mssql';
 export type MSSQLAuthType = 'sql' | 'windows';
 export type ERScope = 'current-sql' | 'database-schema';
+/** MySQL/PostgreSQL 的 SSL 模式：off=跟随服务器默认；tls=加密（跳过证书校验）；verify=加密并校验证书 */
+export type SSLMode = 'off' | 'tls' | 'verify';
 
 export interface DatabaseConnectionProfile {
   id: string;
@@ -12,8 +14,12 @@ export interface DatabaseConnectionProfile {
   database?: string;
   username?: string;
   schema?: string;
+  /** MySQL/PostgreSQL：SSL 模式（默认 off） */
+  sslMode?: SSLMode;
   /** SQL Server：加密连接（默认开启） */
   encrypt?: boolean;
+  /** SQL Server：跳过证书校验（默认开启，兼容自签证书；关闭后启用证书校验） */
+  trustServerCertificate?: boolean;
   /** SQL Server：SQL 认证或 Windows 集成认证 */
   authType?: MSSQLAuthType;
   rememberPassword: boolean;

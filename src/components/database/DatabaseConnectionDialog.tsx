@@ -35,7 +35,23 @@ export function DatabaseConnectionDialog({ onClose, onConnected }: { onClose: ()
     <ModalDialog title="连接本机数据库" description="桌面版只读取 Schema 元数据，不执行任意 SQL。" onClose={onClose} className="database-dialog">
       <form className="dialog-form" onSubmit={event => { event.preventDefault(); void run('connect'); }}>
         <div className="database-kind-tabs" role="tablist" aria-label="数据库类型">
-          {(['sqlite', 'mysql', 'postgresql', 'mssql'] as DatabaseKind[]).map(kind => <button key={kind} type="button" role="tab" aria-selected={profile.kind === kind} onClick={() => setProfile(emptyProfile(kind))}>{KIND_LABELS[kind]}</button>)}
+          {(['sqlite', 'mysql', 'postgresql', 'mssql'] as DatabaseKind[]).map(kind => (
+            <button
+              key={kind}
+              type="button"
+              role="tab"
+              aria-selected={profile.kind === kind}
+              onClick={() => setProfile(current => ({
+                ...emptyProfile(kind),
+                // 切换类型保留通用输入；服务器型互切时保留主机/库/用户名（端口按目标类型重置）
+                name: current.name,
+                rememberPassword: current.rememberPassword,
+                ...(kind !== 'sqlite' && current.kind !== 'sqlite' ? { host: current.host, port: DEFAULT_PORTS[kind], database: current.database, username: current.username } : {}),
+              }))}
+            >
+              {KIND_LABELS[kind]}
+            </button>
+          ))}
         </div>
         {matchingProfiles.length > 0 && <label>已保存连接<select value="" onChange={event => { const saved = profiles.find(item => item.id === event.target.value); if (saved) setProfile({ ...saved, password: '' }); }}><option value="">新建连接</option>{matchingProfiles.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>}
         <label>连接名称<input value={profile.name} onChange={event => update({ name: event.target.value })} required maxLength={80} /></label>
@@ -53,7 +69,19 @@ export function DatabaseConnectionDialog({ onClose, onConnected }: { onClose: ()
               <label>密码<input type="password" autoComplete="new-password" value={profile.password ?? ''} onChange={event => update({ password: event.target.value })} /></label>
             </>
           ) : null}
-          {profile.kind === 'mssql' && <label className="checkbox-label"><input type="checkbox" checked={profile.encrypt !== false} onChange={event => update({ encrypt: event.target.checked })} />加密连接（跳过证书校验）</label>}
+          {(profile.kind === 'mysql' || profile.kind === 'postgresql') && (
+            <label>SSL<select value={profile.sslMode ?? 'off'} onChange={event => update({ sslMode: event.target.value as DatabaseConnectionInput['sslMode'] })}>
+              <option value="off">跟随服务器默认</option>
+              <option value="tls">加密连接（跳过证书校验）</option>
+              <option value="verify">加密并校验证书</option>
+            </select></label>
+          )}
+          {profile.kind === 'mssql' && (
+            <>
+              <label className="checkbox-label"><input type="checkbox" checked={profile.encrypt !== false} onChange={event => update({ encrypt: event.target.checked })} />加密连接</label>
+              <label className="checkbox-label"><input type="checkbox" checked={profile.trustServerCertificate !== false} onChange={event => update({ trustServerCertificate: event.target.checked })} />跳过证书校验（自签证书）</label>
+            </>
+          )}
           <label className="checkbox-label"><input type="checkbox" checked={profile.rememberPassword} onChange={event => update({ rememberPassword: event.target.checked })} />使用系统安全存储记住密码</label>
         </>}
         {error && <p className="field-error" role="alert">{error}</p>}
@@ -70,7 +98,7 @@ function emptyProfile(kind: DatabaseKind): DatabaseConnectionInput {
     ...(kind === 'sqlite' ? {} : {
       host: '127.0.0.1', port: DEFAULT_PORTS[kind], database: '', username: '',
       schema: kind === 'postgresql' ? 'public' : kind === 'mssql' ? 'dbo' : '',
-      ...(kind === 'mssql' ? { encrypt: true, authType: 'sql' } : {}),
+      ...(kind === 'mssql' ? { encrypt: true, trustServerCertificate: true, authType: 'sql' } : {}),
     }),
   };
 }

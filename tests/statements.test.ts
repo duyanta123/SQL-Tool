@@ -7,8 +7,8 @@ function mappingsFor(edge: DataFlowEdge | undefined): DFColumnMapping[] {
 }
 
 describe('语句覆盖 statement coverage', () => {
-  it('支持递归 CTE 且自引用回到 CTE 节点', () => {
-    const result = parseSQL(
+  it('支持递归 CTE 且自引用回到 CTE 节点', async () => {
+    const result = await parseSQL(
       'WITH RECURSIVE tree AS (SELECT id, parent_id FROM nodes WHERE parent_id IS NULL UNION ALL SELECT n.id, n.parent_id FROM nodes n JOIN tree t ON n.parent_id = t.id) SELECT * FROM tree',
       'mysql',
     );
@@ -18,10 +18,33 @@ describe('语句覆盖 statement coverage', () => {
     const selfJoin = result.dfGraph.edges.find(edge => edge.kind === 'join' && edge.source === cte?.id);
     expect(selfJoin).toBeDefined();
     expect(result.erGraph.nodes.some(node => node.kind === 'cte' && node.name === 'tree')).toBe(true);
+    // 递归 CTE 第二分支的 nodes 表进入 ER 图，且与 CTE 之间存在连接边
+    expect(result.erGraph.nodes.some(node => node.kind === 'table' && node.tableName === 'nodes')).toBe(true);
+    expect(result.erGraph.edges.some(edge => edge.source === 'table::nodes' && edge.target.startsWith('cte::'))).toBe(true);
   });
 
-  it('CREATE VIEW 在 ER 图生成视图节点并在数据流图生成写边', () => {
-    const result = parseSQL('CREATE VIEW active_users AS SELECT id, name FROM users WHERE active = 1', 'mysql');
+  it('UNION 后续分支的表与连接进入 ER 图', async () => {
+    const result = await parseSQL(
+      'SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id UNION ALL SELECT o.id FROM orders o JOIN products p ON o.product_id = p.id',
+      'mysql',
+    );
+    expect(result.error).toBeNull();
+    const names = result.erGraph.nodes.filter(node => node.kind === 'table').map(node => node.tableName);
+    expect(names).toEqual(expect.arrayContaining(['users', 'roles', 'orders', 'products']));
+    expect(result.erGraph.edges.filter(edge => edge.joinType !== 'FK')).toHaveLength(2);
+  });
+
+  it('DML 的语句级 CTE 被识别（不再当作物理表）', async () => {
+    // 注：node-sql-parser 各方言均不支持 WITH ... INSERT，此处用受支持的 WITH ... DELETE 覆盖 DML 级 CTE
+    const result = await parseSQL('WITH t AS (SELECT id FROM users) DELETE FROM archive WHERE id IN (SELECT id FROM t)', 'mysql');
+    expect(result.error).toBeNull();
+    expect(result.erGraph.nodes.some(node => node.kind === 'cte' && node.name === 't')).toBe(true);
+    expect(result.erGraph.nodes.filter(node => node.kind === 'table' && node.tableName === 't')).toHaveLength(0);
+    expect(result.dfGraph.nodes.some(node => node.kind === 'cte' && node.cteName === 't')).toBe(true);
+  });
+
+  it('CREATE VIEW 在 ER 图生成视图节点并在数据流图生成写边', async () => {
+    const result = await parseSQL('CREATE VIEW active_users AS SELECT id, name FROM users WHERE active = 1', 'mysql');
     expect(result.error).toBeNull();
     expect(result.warnings).toEqual([]);
     const view = result.erGraph.nodes.find(node => node.kind === 'table' && node.tableType === 'view');
@@ -34,15 +57,15 @@ describe('语句覆盖 statement coverage', () => {
     expect(writeEdge?.label).toBe('VIEW');
   });
 
-  it('CREATE VIEW 使用显式列清单（SQLite）', () => {
-    const result = parseSQL('CREATE VIEW v (a, b) AS SELECT id, name FROM users', 'sqlite');
+  it('CREATE VIEW 使用显式列清单（SQLite）', async () => {
+    const result = await parseSQL('CREATE VIEW v (a, b) AS SELECT id, name FROM users', 'sqlite');
     expect(result.error).toBeNull();
     const view = result.erGraph.nodes.find(node => node.kind === 'table' && node.tableType === 'view' && node.tableName === 'v');
     expect(view?.columns.map(column => column.name)).toEqual(['a', 'b']);
   });
 
-  it('PostgreSQL ON CONFLICT 标记为 UPSERT', () => {
-    const result = parseSQL("INSERT INTO stats (day, cnt) VALUES ('2026-01-01', 1) ON CONFLICT (day) DO UPDATE SET cnt = stats.cnt + 1", 'postgresql');
+  it('PostgreSQL ON CONFLICT 标记为 UPSERT', async () => {
+    const result = await parseSQL("INSERT INTO stats (day, cnt) VALUES ('2026-01-01', 1) ON CONFLICT (day) DO UPDATE SET cnt = stats.cnt + 1", 'postgresql');
     expect(result.error).toBeNull();
     const target = result.dfGraph.nodes.find(node => node.kind === 'target' && node.operation === 'UPSERT');
     expect(target).toBeDefined();
@@ -51,23 +74,23 @@ describe('语句覆盖 statement coverage', () => {
     expect(writeEdge?.label).toBe('UPSERT');
   });
 
-  it('MySQL ON DUPLICATE KEY 标记为 UPSERT', () => {
-    const result = parseSQL("INSERT INTO stats (day, cnt) VALUES ('2026-01-01', 1) ON DUPLICATE KEY UPDATE cnt = cnt + 1", 'mysql');
+  it('MySQL ON DUPLICATE KEY 标记为 UPSERT', async () => {
+    const result = await parseSQL("INSERT INTO stats (day, cnt) VALUES ('2026-01-01', 1) ON DUPLICATE KEY UPDATE cnt = cnt + 1", 'mysql');
     expect(result.error).toBeNull();
     const target = result.dfGraph.nodes.find(node => node.kind === 'target' && node.operation === 'UPSERT');
     expect(target).toBeDefined();
     expect(result.dfGraph.edges.some(edge => edge.target === target?.id && edge.label === 'UPSERT')).toBe(true);
   });
 
-  it('PostgreSQL DISTINCT ON 正常解析', () => {
-    const result = parseSQL('SELECT DISTINCT ON (u.id) u.id, o.total FROM users u JOIN orders o ON o.user_id = u.id', 'postgresql');
+  it('PostgreSQL DISTINCT ON 正常解析', async () => {
+    const result = await parseSQL('SELECT DISTINCT ON (u.id) u.id, o.total FROM users u JOIN orders o ON o.user_id = u.id', 'postgresql');
     expect(result.error).toBeNull();
     expect(result.stats.tableCount).toBe(2);
     expect(result.stats.joinCount).toBe(1);
   });
 
-  it('PostgreSQL FILTER 聚合记录表达式与引用列', () => {
-    const result = parseSQL("SELECT COUNT(*) FILTER (WHERE status = 'paid') AS paid_cnt FROM orders", 'postgresql');
+  it('PostgreSQL FILTER 聚合记录表达式与引用列', async () => {
+    const result = await parseSQL("SELECT COUNT(*) FILTER (WHERE status = 'paid') AS paid_cnt FROM orders", 'postgresql');
     expect(result.error).toBeNull();
     const aggregate = result.dfGraph.nodes.find(node => node.kind === 'aggregate');
     const edge = result.dfGraph.edges.find(item => item.target === aggregate?.id && item.kind === 'read');
@@ -78,8 +101,8 @@ describe('语句覆盖 statement coverage', () => {
     expect(mappings.some(mapping => mapping.source.column === 'status')).toBe(true);
   });
 
-  it('PostgreSQL :: 类型转换记录表达式', () => {
-    const result = parseSQL('SELECT u.created_at::date AS d FROM users u', 'postgresql');
+  it('PostgreSQL :: 类型转换记录表达式', async () => {
+    const result = await parseSQL('SELECT u.created_at::date AS d FROM users u', 'postgresql');
     expect(result.error).toBeNull();
     const target = result.dfGraph.nodes.find(node => node.kind === 'target' && node.operation === 'SELECT');
     const edge = result.dfGraph.edges.find(item => item.target === target?.id && item.kind === 'read');
@@ -87,8 +110,8 @@ describe('语句覆盖 statement coverage', () => {
     expect(mapping?.expression?.toLowerCase()).toContain('date');
   });
 
-  it('MySQL CAST 记录表达式', () => {
-    const result = parseSQL('SELECT CAST(u.id AS UNSIGNED) AS uid FROM users u', 'mysql');
+  it('MySQL CAST 记录表达式', async () => {
+    const result = await parseSQL('SELECT CAST(u.id AS UNSIGNED) AS uid FROM users u', 'mysql');
     expect(result.error).toBeNull();
     const target = result.dfGraph.nodes.find(node => node.kind === 'target' && node.operation === 'SELECT');
     const edge = result.dfGraph.edges.find(item => item.target === target?.id && item.kind === 'read');
@@ -96,8 +119,8 @@ describe('语句覆盖 statement coverage', () => {
     expect(mapping?.expression).toContain('UNSIGNED');
   });
 
-  it('TSQL MERGE 属于解析器暂不支持的范围（报错并保留上一次有效图）', () => {
-    const result = parseSQL(
+  it('TSQL MERGE 属于解析器暂不支持的范围（报错并保留上一次有效图）', async () => {
+    const result = await parseSQL(
       'MERGE INTO target t USING source s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.name = s.name WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name);',
       'transactsql',
     );
@@ -105,8 +128,8 @@ describe('语句覆盖 statement coverage', () => {
     expect(result.erGraph.nodes).toEqual([]);
   });
 
-  it('PostgreSQL CREATE MATERIALIZED VIEW 属于解析器暂不支持的范围', () => {
-    const result = parseSQL('CREATE MATERIALIZED VIEW mv AS SELECT id FROM users', 'postgresql');
+  it('PostgreSQL CREATE MATERIALIZED VIEW 属于解析器暂不支持的范围', async () => {
+    const result = await parseSQL('CREATE MATERIALIZED VIEW mv AS SELECT id FROM users', 'postgresql');
     expect(result.error).not.toBeNull();
   });
 });

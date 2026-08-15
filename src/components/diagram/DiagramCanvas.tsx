@@ -9,7 +9,6 @@ import {
   type EdgeTypes,
   type Node,
   type Edge,
-  type ReactFlowInstance,
   type OnNodeDrag,
   type NodeMouseHandler,
   type EdgeMouseHandler,
@@ -64,7 +63,6 @@ interface DiagramCanvasProps {
 }
 
 export function DiagramCanvas({ nodes, edges, mode, searchMatchedIds }: DiagramCanvasProps) {
-  const reactFlowRef = useRef<ReactFlowInstance | null>(null);
   const setHoveredEdge = useAppStore(s => s.setHoveredEdge);
   const setSelectedEdge = useAppStore(s => s.setSelectedEdge);
   const setHoveredNode = useAppStore(s => s.setHoveredNode);
@@ -77,6 +75,7 @@ export function DiagramCanvas({ nodes, edges, mode, searchMatchedIds }: DiagramC
 
   const nodeTypes = mode === 'er' ? erNodeTypes : dfNodeTypes;
   const edgeTypes = mode === 'er' ? erEdgeTypes : dfEdgeTypes;
+  const defaultEdgeOptions = useMemo(() => ({ type: mode === 'er' ? 'erJoin' : 'dfFlow', animated: false }), [mode]);
 
   const handleEdgeMouseEnter = useCallback<EdgeMouseHandler<Edge>>((_event, edge) => {
     setHoveredEdge(edge.id);
@@ -130,11 +129,10 @@ export function DiagramCanvas({ nodes, edges, mode, searchMatchedIds }: DiagramC
     return () => { window.clearTimeout(timer); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); };
   }, [fitContent, mode, mobilePanel, nodeSignature]);
 
-  void reactFlowRef;
-
   const displayNodes = useMemo(() => {
     if (!searchMatchedIds || searchMatchedIds.size === 0) return nodes;
-    return nodes.map(node => searchMatchedIds.has(node.id) ? { ...node, className: 'search-match' } : node);
+    // 拼接而非覆盖节点已有 className
+    return nodes.map(node => searchMatchedIds.has(node.id) ? { ...node, className: [node.className, 'search-match'].filter(Boolean).join(' ') } : node);
   }, [nodes, searchMatchedIds]);
 
   return (
@@ -150,20 +148,15 @@ export function DiagramCanvas({ nodes, edges, mode, searchMatchedIds }: DiagramC
       className={`${isExporting ? 'exporting' : ''} ${isStale ? 'diagram-stale' : ''}`}
     >
       {isStale && <div className="stale-banner" role="status">SQL 存在错误，当前显示上一次有效结果</div>}
-      <ErrorBoundary>
+      <ErrorBoundary onReset={() => { useAppStore.getState().setSelectedEdge(null); useAppStore.getState().setHoveredEdge(null); }}>
         {isEmpty ? (
           <EmptyState />
         ) : (
           <ReactFlow
-            key={mode}
             nodes={displayNodes}
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            onInit={(instance: ReactFlowInstance) => {
-              reactFlowRef.current = instance;
-              setTimeout(fitContent, 80);
-            }}
             onEdgeMouseEnter={handleEdgeMouseEnter}
             onEdgeMouseLeave={handleEdgeMouseLeave}
             onEdgeClick={mode === 'er' ? handleEdgeClick : undefined}
@@ -174,7 +167,7 @@ export function DiagramCanvas({ nodes, edges, mode, searchMatchedIds }: DiagramC
             fitView
             minZoom={0.1}
             maxZoom={2}
-            defaultEdgeOptions={{ type: mode === 'er' ? 'erJoin' : 'dfFlow', animated: false }}
+            defaultEdgeOptions={defaultEdgeOptions}
             proOptions={{ hideAttribution: false }}
             nodesDraggable
             nodesConnectable={false}

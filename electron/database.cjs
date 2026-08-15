@@ -1,12 +1,28 @@
 const connections = new Map();
 
+/** SSL 模式 → mysql2/pg 的 ssl 选项：off 不主动配置（跟随服务器默认），tls 加密不校验，verify 加密且校验 */
+function sslOptions(sslMode) {
+  if (sslMode === 'tls') return { rejectUnauthorized: false };
+  if (sslMode === 'verify') return { rejectUnauthorized: true };
+  return undefined;
+}
+
+/** 连接参数指纹：参数变化时强制重连，避免复用旧库连接 */
+function connectionFingerprint(profile) {
+  return [profile.host, profile.port, profile.database, profile.schema, profile.filePath].filter(Boolean).join('|');
+}
+
 async function connect(profile, password) {
-  await disconnect(profile.id);
+  try {
+    await disconnect(profile.id);
+  } catch {
+    // 旧连接关闭失败不应阻塞新连接建立
+  }
   if (profile.kind === 'sqlite') {
     const module = await import('better-sqlite3');
     const db = new module.default(profile.filePath, { readonly: true, fileMustExist: true });
     db.pragma('query_only = ON');
-    connections.set(profile.id, { kind: profile.kind, client: db });
+    connections.set(profile.id, { kind: profile.kind, client: db, fingerprint: connectionFingerprint(profile) });
     return db;
   }
   if (profile.kind === 'mysql') {
@@ -14,8 +30,11 @@ async function connect(profile, password) {
     const client = await mysql.createConnection({
       host: profile.host, port: profile.port, database: profile.database,
       user: profile.username, password, connectTimeout: 10000, multipleStatements: false,
+      ssl: sslOptions(profile.sslMode),
     });
-    connections.set(profile.id, { kind: profile.kind, client });
+    // 内省查询超时保护，避免 information_schema 挂起导致 IPC 永久阻塞（MariaDB 等不支持时忽略）
+    try { await client.query('SET SESSION max_execution_time = 30000'); } catch { /* best-effort */ }
+    connections.set(profile.id, { kind: profile.kind, client, fingerprint: connectionFingerprint(profile) });
     return client;
   }
   if (profile.kind === 'mssql') {
@@ -28,7 +47,10 @@ async function connect(profile, password) {
       connectionTimeout: 10000,
       requestTimeout: 20000,
       pool: { max: 1, min: 0, idleTimeoutMillis: 30000 },
-      options: { encrypt: profile.encrypt !== false, trustServerCertificate: true },
+      options: {
+        encrypt: profile.encrypt !== false,
+        trustServerCertificate: profile.trustServerCertificate !== false,
+      },
     };
     if (windowsAuth) {
       config.options.trustedConnection = true;
@@ -38,31 +60,38 @@ async function connect(profile, password) {
     }
     const pool = new sql.ConnectionPool(config);
     await pool.connect();
-    connections.set(profile.id, { kind: profile.kind, client: pool });
+    connections.set(profile.id, { kind: profile.kind, client: pool, fingerprint: connectionFingerprint(profile) });
     return pool;
   }
   const { Client } = await import('pg');
   const client = new Client({
     host: profile.host, port: profile.port, database: profile.database,
     user: profile.username, password, connectionTimeoutMillis: 10000,
+    ssl: sslOptions(profile.sslMode),
   });
   await client.connect();
-  connections.set(profile.id, { kind: profile.kind, client });
+  // 内省查询超时保护（同 MySQL 说明）
+  try { await client.query("SET statement_timeout = '30s'"); } catch { /* best-effort */ }
+  connections.set(profile.id, { kind: profile.kind, client, fingerprint: connectionFingerprint(profile) });
   return client;
 }
 
 async function testConnection(profile, password) {
   try {
     await connect(profile, password);
-    return { ok: true, message: '连接成功' };
   } catch (error) {
     throw new Error(readableDatabaseError(error, profile.kind));
+  } finally {
+    // 测试连接即用即关：不留驻连接，避免“只测不连”场景耗尽数据库连接数
+    await disconnect(profile.id).catch(() => {});
   }
+  return { ok: true, message: '连接成功' };
 }
 
 async function introspect(profile, password) {
+  const fingerprint = connectionFingerprint(profile);
   let entry = connections.get(profile.id);
-  if (!entry || entry.kind !== profile.kind) {
+  if (!entry || entry.kind !== profile.kind || entry.fingerprint !== fingerprint) {
     await connect(profile, password);
     entry = connections.get(profile.id);
   }
@@ -81,10 +110,25 @@ async function introspect(profile, password) {
 async function disconnect(connectionId) {
   const entry = connections.get(connectionId);
   if (!entry) return;
-  connections.delete(connectionId);
-  if (entry.kind === 'sqlite') entry.client.close();
-  else if (entry.kind === 'mssql') await entry.client.close();
-  else await entry.client.end();
+  try {
+    if (entry.kind === 'sqlite') entry.client.close();
+    else if (entry.kind === 'mssql') await entry.client.close();
+    else await entry.client.end();
+  } catch (error) {
+    console.warn('[database] 关闭连接失败', error);
+  } finally {
+    // 先关闭再删除：关闭失败时保留条目以便重试
+    connections.delete(connectionId);
+  }
+}
+
+async function disconnectAll() {
+  for (const id of [...connections.keys()]) await disconnect(id);
+}
+
+/** 仅用于测试：当前驻留连接数 */
+function connectionCount() {
+  return connections.size;
 }
 
 function introspectSQLite(db) {
@@ -355,8 +399,8 @@ function readableDatabaseError(error, kind) {
   if (lower.includes('etimedout') || lower.includes('timeout')) return '连接超时：请检查防火墙、VPN、容器端口映射与监听地址';
   if (lower.includes('access denied') || lower.includes('password authentication failed') || lower.includes('login failed') || lower.includes('28p01')) return '认证失败：请检查用户名、密码与数据库权限';
   if (lower.includes('enotfound') || lower.includes('getaddrinfo')) return '无法解析主机名：请检查主机地址';
-  if (lower.includes('self-signed') || lower.includes('certificate')) return 'TLS 证书校验失败：可尝试开启“跳过证书校验”';
+  if (lower.includes('self-signed') || lower.includes('certificate')) return 'TLS 证书校验失败：可在连接设置的 SSL 选项中选择「加密连接（跳过证书校验）」';
   return message;
 }
 
-module.exports = { connect, disconnect, introspect, introspectMySQL, introspectPostgreSQL, introspectSQLite, introspectMSSQL, readableDatabaseError, testConnection };
+module.exports = { connect, disconnect, disconnectAll, connectionCount, introspect, introspectMySQL, introspectPostgreSQL, introspectSQLite, introspectMSSQL, readableDatabaseError, testConnection };

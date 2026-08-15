@@ -135,7 +135,7 @@ export const ERTableNode = memo(({ data, selected }: NodeProps & { data: ERNodeD
               {!col.isPK && !col.isFK && <span style={{ width: 12, flexShrink: 0 }} />}
               <span
                 style={{
-                  color: col.isPK ? 'var(--color-text)' : 'var(--color-text)',
+                  color: 'var(--color-text)',
                   fontWeight: col.isPK ? 600 : 400,
                   flex: 1,
                   overflow: 'hidden',

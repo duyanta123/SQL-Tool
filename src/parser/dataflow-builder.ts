@@ -179,15 +179,41 @@ function processSelect(select: AstNode, ctx: Context, statementId: string, inher
   return outputId;
 }
 
+/** 语句级 WITH（DML）：注册 CTE 节点并返回名称→节点 id 映射，供子 SELECT 解析引用 */
+function dmlCteMap(statement: AstNode, ctx: Context, statementId: string): Map<string, string> {
+  const ctes = getCtes(statement);
+  const map = new Map<string, string>();
+  if (!ctes.length) return map;
+  const groupId = addNode(ctx, {
+    id: nextId(ctx, `${statementId}::cte-group`), kind: 'cte-group', label: 'CTE', statementId, cteCount: ctes.length,
+  });
+  for (const cte of ctes) {
+    const id = addNode(ctx, {
+      id: `${statementId}::cte::${cte.name.toLowerCase()}`,
+      kind: 'cte', label: cte.name, statementId, cteName: cte.name,
+      outputColumns: cte.columns.length ? cte.columns : outputColumns(cte.statement), detail: 'CTE',
+    });
+    map.set(cte.name.toLowerCase(), id);
+    addEdge(ctx, groupId, id, 'pipe', '定义');
+  }
+  for (const cte of ctes) {
+    const output = processSelect(cte.statement, ctx, statementId, map);
+    const cteId = map.get(cte.name.toLowerCase());
+    if (cteId) addEdge(ctx, output, cteId, 'pipe', 'CTE');
+  }
+  return map;
+}
+
 function processInsert(statement: AstNode, ctx: Context, statementId: string): void {
   const ref = normalizeTableRef(statement.table);
   if (!ref) return;
+  const ctes = dmlCteMap(statement, ctx, statementId);
   const upsert = asNode(statement.on_duplicate_update) != null || asNode(statement.conflict) != null;
   const operation = upsert ? 'UPSERT' : 'INSERT';
   const target = targetNode(ctx, statementId, operation, ref.id, asArray(statement.columns).map(identifier).filter(Boolean));
   const select = asNode(statement.values);
   if (select && statementType(select) === 'select') {
-    addEdge(ctx, processSelect(select, ctx, statementId, new Map()), target, 'write', operation);
+    addEdge(ctx, processSelect(select, ctx, statementId, ctes), target, 'write', operation);
     return;
   }
   const literal = addNode(ctx, {
@@ -200,21 +226,23 @@ function processInsert(statement: AstNode, ctx: Context, statementId: string): v
 function processUpdate(statement: AstNode, ctx: Context, statementId: string): void {
   const ref = normalizeTableRef(statement.table);
   if (!ref) return;
+  const ctes = dmlCteMap(statement, ctx, statementId);
   const target = targetNode(ctx, statementId, 'UPDATE', ref.id);
   addEdge(ctx, sourceNode(ctx, statementId, ref.id, ref.alias), target, 'read');
   for (const item of asArray(statement.table).slice(1)) {
     const dependency = normalizeTableRef(item);
     if (dependency) addEdge(ctx, sourceNode(ctx, statementId, dependency.id, dependency.alias), target, 'join', normalizeJoinLabel(identifier(asNode(item)?.join) || 'JOIN'));
   }
-  connectDependencies(statement, ctx, statementId, target, new Map(), ref.id);
+  connectDependencies(statement, ctx, statementId, target, ctes, ref.id);
 }
 
 function processDelete(statement: AstNode, ctx: Context, statementId: string): void {
   const ref = normalizeTableRef(statement.table ?? statement.from);
   if (!ref) return;
+  const ctes = dmlCteMap(statement, ctx, statementId);
   const target = targetNode(ctx, statementId, 'DELETE', ref.id);
   addEdge(ctx, sourceNode(ctx, statementId, ref.id, ref.alias), target, 'read');
-  connectDependencies(statement, ctx, statementId, target, new Map(), ref.id);
+  connectDependencies(statement, ctx, statementId, target, ctes, ref.id);
 }
 
 function processCreate(statement: AstNode, ctx: Context, statementId: string): void {

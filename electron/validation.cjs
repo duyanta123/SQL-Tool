@@ -1,6 +1,7 @@
 const path = require('node:path');
 
 const KINDS = new Set(['sqlite', 'mysql', 'postgresql', 'mssql']);
+const SSL_MODES = new Set(['off', 'tls', 'verify']);
 const ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function validateConnectionId(value) {
@@ -34,7 +35,16 @@ function validateProfile(raw, { allowMissingFile = false } = {}) {
       profile.username = cleanText(raw.username, '用户名', 128);
     }
     if (raw.schema != null && raw.schema !== '') profile.schema = cleanText(raw.schema, 'Schema', 128);
-    if (kind === 'mssql') profile.encrypt = raw.encrypt !== false;
+    if (kind === 'mysql' || kind === 'postgresql') {
+      if (raw.sslMode != null) {
+        if (typeof raw.sslMode !== 'string' || !SSL_MODES.has(raw.sslMode)) throw new Error('SSL 模式无效');
+        profile.sslMode = raw.sslMode;
+      }
+    }
+    if (kind === 'mssql') {
+      profile.encrypt = raw.encrypt !== false;
+      profile.trustServerCertificate = raw.trustServerCertificate !== false;
+    }
   }
   if (raw.password != null) {
     if (typeof raw.password !== 'string' || raw.password.length > 1024) throw new Error('密码格式无效');

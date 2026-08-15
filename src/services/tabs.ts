@@ -50,11 +50,12 @@ export function closeTab(id: string): void {
   const state = useAppStore.getState();
   const index = state.tabs.findIndex(tab => tab.id === id);
   if (index < 0) return;
-  let tabs = syncActiveTab(state.tabs, state).filter(tab => tab.id !== id);
+  const wasActive = state.activeTabId === id;
+  // 关闭活动标签时其内容即将卸载，无需同步；关闭非活动标签时仍需把当前编辑状态写回活动标签
+  let tabs = (wasActive ? state.tabs : syncActiveTab(state.tabs, state)).filter(tab => tab.id !== id);
   if (tabs.length === 0) {
     tabs = [makeTab({ name: '查询 1', dialect: state.dialect })];
   }
-  const wasActive = state.activeTabId === id;
   const neighbor = state.tabs[index + 1] ?? state.tabs[index - 1];
   const nextActiveId = wasActive
     ? (tabs.find(tab => tab.id === neighbor?.id)?.id ?? tabs[0]?.id ?? null)

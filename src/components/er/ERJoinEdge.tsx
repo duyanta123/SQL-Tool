@@ -34,15 +34,15 @@ export const ERJoinEdge = memo((props: EdgeProps & { data?: ERJoinEdgeData }) =>
   const isNodeHovered = !!hoveredNodeId && (props.source === hoveredNodeId || props.target === hoveredNodeId);
   const highlight = isHovered || isSelected || isNodeHovered;
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-    curvature: 0.25,
-  });
+  // 自环（自引用 FK / 自连接）：源/目标柄几乎重合，bezier 路径会退化，改用手工回环路径
+  const isSelfLoop = props.source === props.target;
+  const [edgePath, labelX, labelY] = isSelfLoop
+    ? [
+        `M ${sourceX},${sourceY} C ${sourceX + 90},${sourceY - 50} ${sourceX + 90},${sourceY + 70} ${sourceX},${sourceY + 56}`,
+        sourceX + 96,
+        sourceY + 8,
+      ]
+    : getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, curvature: 0.25 });
 
   const { edgeStyle, showSourceDot, showTargetDot } = useMemo(() => {
     let stroke = 'var(--color-border-strong)';
@@ -186,9 +186,11 @@ export const ERJoinEdge = memo((props: EdgeProps & { data?: ERJoinEdgeData }) =>
                 {data.joinType} 条件
               </div>
               <button
+                type="button"
+                aria-label="关闭条件详情"
+                className="join-close-btn"
                 onClick={(e) => { e.stopPropagation(); setSelectedEdge(null); }}
                 style={{
-                  color: 'var(--color-text-muted)',
                   display: 'flex',
                   cursor: 'pointer',
                   padding: 2,
@@ -196,8 +198,6 @@ export const ERJoinEdge = memo((props: EdgeProps & { data?: ERJoinEdgeData }) =>
                   border: 'none',
                   background: 'transparent',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
               >
                 <XIcon size={12} />
               </button>

@@ -1,13 +1,15 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { useAppStore } from '@/store/useAppStore';
 import { downloadDataUrl, downloadBlob } from '@/utils/download';
 
 export function useExportDiagram() {
-  const reactFlowWrapper = useRef<HTMLElement | null>(null);
   const { fitView } = useReactFlow();
   const setExporting = useAppStore(s => s.setExporting);
   const pushToast = useAppStore(s => s.pushToast);
+  const resolvedTheme = useAppStore(s => s.resolvedTheme);
+  // 导出背景跟随主题（与 Electron 窗口底色一致）
+  const backgroundColor = resolvedTheme === 'dark' ? '#17181c' : '#ffffff';
 
   const getContainer = useCallback((): HTMLElement | null => {
     return document.querySelector('.react-flow') as HTMLElement | null;
@@ -26,7 +28,7 @@ export function useExportDiagram() {
       await document.fonts.ready;
       const dataUrl = await toPng(container, {
         pixelRatio: 2,
-        backgroundColor: '#ffffff',
+        backgroundColor,
       });
       downloadDataUrl(dataUrl, `sql-diagram-${Date.now()}.png`);
       pushToast('success', 'PNG 已导出');
@@ -36,7 +38,7 @@ export function useExportDiagram() {
     } finally {
       setExporting(false);
     }
-  }, [fitView, getContainer, setExporting, pushToast]);
+  }, [fitView, getContainer, setExporting, pushToast, backgroundColor]);
 
   const exportSVG = useCallback(async () => {
     const container = getContainer();
@@ -50,7 +52,7 @@ export function useExportDiagram() {
       const { toSvg } = await import('html-to-image');
       await document.fonts.ready;
       const svgStr = await toSvg(container, {
-        backgroundColor: '#ffffff',
+        backgroundColor,
       });
       const blob = new Blob([svgStr], { type: 'image/svg+xml' });
       downloadBlob(blob, `sql-diagram-${Date.now()}.svg`);
@@ -61,7 +63,7 @@ export function useExportDiagram() {
     } finally {
       setExporting(false);
     }
-  }, [fitView, getContainer, setExporting, pushToast]);
+  }, [fitView, getContainer, setExporting, pushToast, backgroundColor]);
 
-  return { exportPNG, exportSVG, reactFlowWrapper };
+  return { exportPNG, exportSVG };
 }

@@ -55,8 +55,6 @@ function render(node: AstNode | null, resolveTable?: ResolveTable): string {
       const argsSql = renderArgs(asNode(node.args), resolveTable);
       return `${name}(${argsSql})`;
     }
-    case 'window':
-      return 'OVER (...)';
     case 'binary_expr': {
       const op = identifier(node.operator);
       const left = render(asNode(node.left), resolveTable);

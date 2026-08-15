@@ -147,7 +147,7 @@ export const DFFlowEdge = memo((props: EdgeProps & { data?: DFFlowEdgeData }) =>
         strokeWidth={16}
         onMouseEnter={() => setHoveredEdge(id)}
         onMouseLeave={() => setHoveredEdge(null)}
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'default' }}
       />
     </>
   );

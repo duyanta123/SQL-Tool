@@ -9,6 +9,9 @@ export function ModalDialog({ title, description, onClose, children, className =
   closeLabel?: string;
 }) {
   const dialogRef = useRef<HTMLElement>(null);
+  // onClose 经 ref 引用：调用方传内联箭头函数时，父组件重渲染不再触发焦点管理 effect 重跑（避免输入焦点被夺）
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -18,7 +21,7 @@ export function ModalDialog({ title, description, onClose, children, className =
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
       if (event.key === 'Tab') {
         const items = focusable();
@@ -35,7 +38,7 @@ export function ModalDialog({ title, description, onClose, children, className =
       document.removeEventListener('keydown', handleKeyDown);
       previouslyFocused?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>

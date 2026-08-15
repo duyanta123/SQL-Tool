@@ -56,6 +56,8 @@ function collectEQ(node: any, pairs: EQPair[]): void {
       });
       return;
     }
+    // OR 分支下的等值对不具备合取语义，不再提取；完整语义由 conditionSQL 文本承载
+    if (node.operator === 'OR') return;
     // Non-AND operators: try to find EQ within
     collectEQ(node.left, pairs);
     collectEQ(node.right, pairs);

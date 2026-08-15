@@ -118,6 +118,14 @@
   pointer-events: auto;
 }
 
+.join-close-btn {
+  color: var(--color-text-muted);
+}
+
+.join-close-btn:hover {
+  color: var(--color-text);
+}
+
 /* Dataflow column lineage popover */
 .df-column-mapping-popover {
   position: absolute;

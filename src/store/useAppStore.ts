@@ -182,6 +182,7 @@ export const useAppStore = create<AppState>((set) => ({
       parseTimeMs: parseTimeMs ?? null,
       isParsing: false,
       isStale: false,
+      selectedEdgeId: null, // 图已重建，旧选中边失效
     }),
   setParseFailure: (error, parseTimeMs) => set({ error, parseTimeMs: parseTimeMs ?? null, isParsing: false, isStale: true }),
   setParsing: (isParsing) => set({ isParsing }),
@@ -241,6 +242,12 @@ export const useAppStore = create<AppState>((set) => ({
       schemaSyncStatus: 'idle',
       schemaSyncError: null,
       isDatabaseConnected: false,
+      // 清理旧工作区的解析态：避免旧 parseResult 配新 positions 触发错误布局，等待重新解析
+      parseResult: null,
+      parseTimeMs: null,
+      isParsing: false,
+      isStale: false,
+      error: null,
       selectedEdgeId: null,
       past: [],
       future: [],

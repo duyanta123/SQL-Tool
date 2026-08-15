@@ -23,10 +23,10 @@ export function emptyParseResult(error: ParseError | null = null): ParseResult {
   };
 }
 
-export function parseSQL(sql: string, dialect: Dialect, schemaSnapshot?: DatabaseSchemaSnapshot | null): ParseResult {
+export async function parseSQL(sql: string, dialect: Dialect, schemaSnapshot?: DatabaseSchemaSnapshot | null): Promise<ParseResult> {
   if (!sql.trim()) return emptyParseResult();
   try {
-    return createParseResult(astify(sql, dialect), schemaSnapshot);
+    return createParseResult(await astify(sql, dialect), schemaSnapshot);
   } catch (error) {
     const detail = error as { message?: string; location?: { start?: { line?: number; offset?: number } } };
     return emptyParseResult({

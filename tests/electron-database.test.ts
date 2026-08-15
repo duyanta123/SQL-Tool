@@ -146,6 +146,34 @@ describe('Electron database boundary', () => {
     expect(database.readableDatabaseError(new Error('some other failure'), 'mysql')).toBe('some other failure');
   });
 
+  it('validates SSL mode whitelist and mssql certificate options', () => {
+    const mysqlProfile = { id: 'db', name: 'DB', kind: 'mysql', host: 'localhost', port: 3306, database: 'app', username: 'me' };
+    expect(validateProfile({ ...mysqlProfile, sslMode: 'tls' }).sslMode).toBe('tls');
+    expect(validateProfile({ ...mysqlProfile, sslMode: 'verify' }).sslMode).toBe('verify');
+    expect(validateProfile(mysqlProfile).sslMode).toBeUndefined();
+    expect(() => validateProfile({ ...mysqlProfile, sslMode: 'unsafe-mode' })).toThrow(/SSL/);
+
+    const mssqlProfile = { id: 'db2', name: 'DB', kind: 'mssql', host: 'localhost', port: 1433, database: 'app', username: 'me' };
+    expect(validateProfile(mssqlProfile)).toMatchObject({ encrypt: true, trustServerCertificate: true });
+    expect(validateProfile({ ...mssqlProfile, trustServerCertificate: false })).toMatchObject({ trustServerCertificate: false });
+    expect(validateProfile({ ...mssqlProfile, encrypt: false })).toMatchObject({ encrypt: false });
+  });
+
+  it('testConnection closes the connection after probing (no leaked entries)', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sqlviz-testconn-'));
+    temporaryDirectories.push(directory);
+    const filePath = join(directory, 'probe.sqlite');
+    const BetterSqlite3 = (await import('better-sqlite3')).default;
+    const writer = new BetterSqlite3(filePath);
+    writer.exec('CREATE TABLE t (id INTEGER PRIMARY KEY)');
+    writer.close();
+
+    const before = database.connectionCount();
+    const result = await database.testConnection({ id: 'probe-db', name: 'Probe', kind: 'sqlite', filePath, rememberPassword: false });
+    expect(result).toEqual({ ok: true, message: '连接成功' });
+    expect(database.connectionCount()).toBe(before);
+  });
+
   it('never persists a plaintext password and decrypts only through safe storage', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'sqlviz-profile-'));
     temporaryDirectories.push(directory);

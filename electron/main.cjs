@@ -61,9 +61,14 @@ function createWindow() {
     return { action: 'deny' };
   });
   window.webContents.on('will-navigate', event => event.preventDefault());
+  window.webContents.on('did-fail-load', (_event, code, description, url) => {
+    if (code === -3) return; // ERR_ABORTED：正常导航中断
+    dialog.showErrorBox('页面加载失败', `加载 ${url} 失败（${code}）：${description}\n请先执行 npm run build 生成 dist 目录。`);
+  });
   const developmentUrl = process.env.ELECTRON_RENDERER_URL;
-  if (developmentUrl) void window.loadURL(developmentUrl);
-  else void window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  const loadFailure = error => dialog.showErrorBox('启动失败', String(error?.message ?? error));
+  if (developmentUrl) window.loadURL(developmentUrl).catch(loadFailure);
+  else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html')).catch(loadFailure);
 }
 
 function registerDatabaseIPC() {
@@ -114,6 +119,15 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+// 退出前优雅关闭所有数据库连接（SQLite WAL checkpoint、远程会话释放）
+let databaseCleaned = false;
+app.on('before-quit', event => {
+  if (databaseCleaned) return;
+  event.preventDefault();
+  databaseCleaned = true;
+  void database.disconnectAll().catch(() => {}).finally(() => app.quit());
 });
 
 module.exports = { CHANNELS, createWindow, registerDatabaseIPC };

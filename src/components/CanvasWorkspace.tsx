@@ -44,9 +44,12 @@ function CanvasWorkspaceContent() {
   const query = searchText.trim().toLowerCase();
   const matchedIds = useMemo(() => {
     if (!query) return new Set<string>();
+    // 预构建扁平索引，避免每次按键对每个节点做全量 JSON.stringify
     const set = new Set<string>();
     for (const node of nodes) {
-      if (JSON.stringify({ id: node.id, data: node.data }).toLowerCase().includes(query)) set.add(node.id);
+      const data = node.data as { tableName?: string; displayName?: string; name?: string; columns?: Array<{ name: string }> } | undefined;
+      const haystack = `${node.id} ${data?.tableName ?? ''} ${data?.displayName ?? ''} ${data?.name ?? ''} ${(data?.columns ?? []).map(column => column.name).join(' ')}`.toLowerCase();
+      if (haystack.includes(query)) set.add(node.id);
     }
     return set;
   }, [nodes, query]);
@@ -61,13 +64,16 @@ function CanvasWorkspaceContent() {
       const target = event.target as HTMLElement | null;
       const inEditor = !!target?.closest?.('.cm-editor');
       const inField = !!target?.closest?.('input, textarea, select, [contenteditable="true"]');
+      // 对话框打开时不拦截全局快捷键（避免抢焦点/在对话框背后切视图）
+      const dialogOpen = !!document.querySelector('.dialog-backdrop');
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        if (dialogOpen || inEditor || inField) return;
         event.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
         return;
       }
-      if (inEditor || inField) return;
+      if (inEditor || inField || dialogOpen) return;
       if (event.key === '1') { event.preventDefault(); useAppStore.getState().setViewMode('er'); return; }
       if (event.key === '2') { event.preventDefault(); useAppStore.getState().setViewMode('dataflow'); return; }
       if (event.key === '0') { event.preventDefault(); void fitView({ padding: 0.08, duration: 220, maxZoom: 1.15 }); return; }

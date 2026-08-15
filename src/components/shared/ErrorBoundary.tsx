@@ -4,6 +4,8 @@ import { AlertIcon } from './Icon';
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  /** 重试前重置可能致错的状态（如选中的边），帮助脱离确定性错误 */
+  onReset?: () => void;
 }
 
 interface State {
@@ -44,7 +46,10 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error?.message ?? '未知错误，请检查 SQL 语法'}
           </div>
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() => {
+              this.props.onReset?.();
+              this.setState({ hasError: false, error: null });
+            }}
             style={{
               marginTop: 8,
               padding: '6px 16px',

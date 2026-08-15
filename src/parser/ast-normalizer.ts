@@ -18,11 +18,17 @@ export function asArray(value: unknown): unknown[] {
 }
 
 export function identifier(value: unknown): string {
+  return identifierDeep(value, 8);
+}
+
+function identifierDeep(value: unknown, depth: number): string {
   if (typeof value === 'string' || typeof value === 'number') return String(value);
+  // 深度上限防御：异常/共享对象输入时避免无限递归栈溢出
+  if (depth <= 0) return '';
   const node = asNode(value);
   if (!node) return '';
   for (const key of ['value', 'column', 'table', 'name', 'expr']) {
-    const result = identifier(node[key]);
+    const result = identifierDeep(node[key], depth - 1);
     if (result) return result;
   }
   return '';
@@ -97,7 +103,10 @@ export function getCtes(select: unknown): Array<{ name: string; statement: AstNo
 export function getColumnRef(value: unknown): { table: string; column: string } | null {
   const node = asNode(value);
   if (!node) return null;
-  if (identifier(node.type) !== 'column_ref' && node.column == null) return null;
+  // 仅接受显式 column_ref，或"无 type 但携带 column 字段"的方言形态；其余类型一律排除
+  const type = identifier(node.type);
+  if (type !== 'column_ref' && type !== '') return null;
+  if (node.column == null) return null;
   const column = identifier(node.column);
   if (!column) return null;
   return { table: identifier(node.table), column };

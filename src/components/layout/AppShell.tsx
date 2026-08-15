@@ -30,8 +30,8 @@ export function AppShell({ editor, canvas, statusBar }: AppShellProps) {
   return (
     <div className="app-shell">
       <div className="mobile-panel-switcher" role="tablist" aria-label="移动端面板">
-        <button role="tab" aria-selected={mobilePanel === 'editor'} onClick={() => setMobilePanel('editor')}>编辑器</button>
-        <button role="tab" aria-selected={mobilePanel === 'diagram'} onClick={() => setMobilePanel('diagram')}>图形</button>
+        <button type="button" role="tab" aria-selected={mobilePanel === 'editor'} onClick={() => setMobilePanel('editor')}>编辑器</button>
+        <button type="button" role="tab" aria-selected={mobilePanel === 'diagram'} onClick={() => setMobilePanel('diagram')}>图形</button>
       </div>
       <div className="app-body">
         <section className={`editor-panel ${mobilePanel === 'editor' ? 'mobile-active' : ''} ${editorCollapsed ? 'desktop-collapsed' : ''}`} style={{ width: editorWidth }} aria-label="SQL 编辑器">

@@ -24,7 +24,7 @@ export function SchemaSelectionPanel({ onClose, onConnect }: { onClose: () => vo
       {snapshot && <p className="sync-time">最近同步：{new Date(snapshot.fetchedAt).toLocaleString()}</p>}
       {syncError && <p className="field-error" role="alert">{syncError}（已保留上次有效 Schema）</p>}
       <input className="schema-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索 Schema 或表名" aria-label="搜索 Schema 或表名" />
-      <div className="schema-selection-tools"><button type="button" onClick={() => setSelected(snapshot?.tables.map(table => table.id) ?? [])}>全选</button><button type="button" onClick={() => setSelected([])}>全部取消</button><span>{selected.length}/{snapshot?.tables.length ?? 0}</span></div>
+      <div className="schema-selection-tools"><button type="button" title="选中当前列表中的所有表（含搜索过滤结果）" onClick={() => setSelected(filtered.map(table => table.id))}>全选</button><button type="button" onClick={() => setSelected([])}>全部取消</button><span>{selected.length}/{snapshot?.tables.length ?? 0}</span></div>
       <div className="schema-table-list">
         {filtered.map(table => <label key={table.id}><input type="checkbox" checked={selected.includes(table.id)} onChange={() => toggle(table.id)} /><span><strong>{table.name}</strong>{table.kind === 'view' && <small className="schema-view-badge">视图</small>}{table.schema && <small>{table.schema}</small>}</span><em>{table.columns.length} 列</em></label>)}
         {!filtered.length && <p className="empty-list">没有匹配的表</p>}
