@@ -51,7 +51,9 @@ export function Toolbar({ onExportPNG, onExportSVG, onAutoLayout, onFitView, onO
   const selectSample = (sql: string) => { setSQL(sql); setMenu(null); };
   const themeLabel = theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统';
   const cycleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light');
+    // 从 store 读实时主题值，避免连续快速点击时闭包快照过期导致“两次点击落在同一档”
+    const current = useAppStore.getState().theme;
+    setTheme(current === 'light' ? 'dark' : current === 'dark' ? 'system' : 'light');
     setMenu(null);
   };
   const updateAction = async () => {

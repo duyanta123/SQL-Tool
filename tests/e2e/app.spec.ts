@@ -55,16 +55,16 @@ test('cycles theme preference and persists it', async ({ page }) => {
   const toggle = page.getByRole('button', { name: '切换主题' });
   const html = page.locator('html');
   await expect(toggle).toBeVisible();
-  await toggle.click();
-  await expect(html).toHaveAttribute('data-theme', 'light');
-  await toggle.click();
+  // 通过按钮 title 读取当前偏好（亮色/暗色/跟随系统），驱动到确定的“暗色”
+  const isDarkPreference = async () => (await toggle.getAttribute('title')) === '主题：暗色';
+  for (let i = 0; i < 3 && !(await isDarkPreference()); i++) await toggle.click();
+  await expect(toggle).toHaveAttribute('title', '主题：暗色');
   await expect(html).toHaveAttribute('data-theme', 'dark');
-  await toggle.click();
-  await expect(html).toHaveAttribute('data-theme', /light|dark/);
+  // 持久化：刷新后偏好与解析主题都应保持暗色
   await page.waitForTimeout(400);
   await page.reload();
-  await expect(page.getByRole('button', { name: '切换主题' })).toBeVisible();
-  await expect(html).toHaveAttribute('data-theme', /light|dark/);
+  await expect(page.getByRole('button', { name: '切换主题' })).toHaveAttribute('title', '主题：暗色');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
 test('creates, renames and deletes workspaces with custom dialogs', async ({ page }) => {
