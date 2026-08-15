@@ -85,7 +85,7 @@
     "publish": {
       "provider": "github",
       "owner": "duyanta123",
-      "repo": "SQL-"
+      "repo": "SQL-Tool"
     }
   }
 }

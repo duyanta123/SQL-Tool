@@ -6,7 +6,7 @@ SQL 默认只在本机处理，不需要登录，也不会上传到服务器。
 
 ## Windows 下载
 
-[下载安装版](https://github.com/duyanta123/SQL-/releases/latest/download/SQL-Visualizer-Setup.exe) · [下载便携版](https://github.com/duyanta123/SQL-/releases/latest/download/SQL-Visualizer-Portable.exe) · [查看历史版本](https://github.com/duyanta123/SQL-/releases)
+[下载安装版](https://github.com/duyanta123/SQL-Tool/releases/latest/download/SQL-Visualizer-Setup.exe) · [下载便携版](https://github.com/duyanta123/SQL-Tool/releases/latest/download/SQL-Visualizer-Portable.exe) · [查看历史版本](https://github.com/duyanta123/SQL-Tool/releases)
 
 - 安装版：支持选择安装目录，适合日常使用；工具栏可“检查更新”，新版本下载完成后退出应用时自动安装。
 - 便携版：无需安装，下载后直接运行（便携版不支持自动更新，请手动下载新版）。
@@ -148,8 +148,8 @@ Windows SmartScreen 可能会提示未知发布者。请确认文件来自本仓
 ### 本地开发
 
 ```bash
-git clone https://github.com/duyanta123/SQL-.git
-cd SQL-
+git clone https://github.com/duyanta123/SQL-Tool.git
+cd SQL-Tool
 npm install
 npm run dev
 ```
